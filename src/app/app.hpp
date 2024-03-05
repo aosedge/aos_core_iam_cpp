@@ -7,6 +7,8 @@
 
 #include <Poco/Util/ServerApplication.h>
 
+#include "logger/logger.hpp"
+
 /**
  * Aos IAM application.
  */
@@ -18,6 +20,9 @@ public:
     App() { }
 
 protected:
+    void initialize(Application& self);
+    void uninitialize();
+    void reinitialize(Application& self);
     int  main(const ArgVec& args);
     void defineOptions(Poco::Util::OptionSet& options);
 
@@ -27,6 +32,8 @@ private:
     void HandleProvisioning(const std::string& name, const std::string& value);
     void HandleJournal(const std::string& name, const std::string& value);
     void HandleLogLevel(const std::string& name, const std::string& value);
+
+    Logger mLogger;
 
     bool mStopProcessing = false;
     bool mProvisioning   = false;
