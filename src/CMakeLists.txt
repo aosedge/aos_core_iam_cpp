@@ -29,7 +29,7 @@ add_executable(${TARGET} ${SOURCES})
 # Labraries
 # ######################################################################################################################
 
-target_link_libraries(${TARGET} PUBLIC aoscommon aosiam Poco::Util)
+target_link_libraries(${TARGET} PUBLIC aoscommon aosiam Poco::Util ${JOURNALD_LIBRARIES})
 
 # ######################################################################################################################
 # Install
