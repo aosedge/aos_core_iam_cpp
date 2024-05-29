@@ -13,7 +13,7 @@ include(FetchContent)
 FetchContent_Declare(
     aoscoreapi
     GIT_REPOSITORY https://github.com/aoscloud/aos_core_api.git
-    GIT_TAG v7.3.1
+    GIT_TAG feature_dynamic_nodes
     GIT_PROGRESS TRUE
     GIT_SHALLOW TRUE
 )
