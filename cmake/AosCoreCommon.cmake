@@ -12,8 +12,8 @@ set(aoscorecommon_build_dir ${CMAKE_CURRENT_BINARY_DIR}/aoscorecommon)
 ExternalProject_Add(
     aoscorecommon
     PREFIX ${aoscorecommon_build_dir}
-    GIT_REPOSITORY https://github.com/aosedge/aos_core_common_cpp.git
-    GIT_TAG develop
+    GIT_REPOSITORY https://github.com/mykola-kobets-epam/aos_core_common_cpp.git
+    GIT_TAG renew-cert-fix
     GIT_PROGRESS TRUE
     GIT_SHALLOW TRUE
     CMAKE_ARGS -Daoscore_build_dir=${aoscore_build_dir}
