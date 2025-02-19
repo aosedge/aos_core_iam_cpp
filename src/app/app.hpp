@@ -10,7 +10,7 @@
 
 #include <Poco/Util/ServerApplication.h>
 
-#include <aos/common/crypto/mbedtls/cryptoprovider.hpp>
+#include <aos/common/crypto/cryptoprovider.hpp>
 #include <aos/iam/certmodules/pkcs11/pkcs11.hpp>
 #include <aos/iam/certprovider.hpp>
 #include <aos/iam/nodemanager.hpp>
@@ -49,7 +49,7 @@ private:
 
     aos::Error InitCertModules(const Config& config);
 
-    aos::crypto::MbedTLSCryptoProvider mCryptoProvider;
+    aos::crypto::DefaultCryptoProvider mCryptoProvider;
     aos::crypto::CertLoader            mCertLoader;
     aos::iam::certhandler::CertHandler mCertHandler;
     aos::pkcs11::PKCS11Manager         mPKCS11Manager;
