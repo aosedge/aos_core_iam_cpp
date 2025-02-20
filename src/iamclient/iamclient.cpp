@@ -313,11 +313,6 @@ bool IAMClient::ProcessFinishProvisioning(const iamanager::v5::FinishProvisionin
     }
 
     err = mNodeInfoProvider->SetNodeStatus(aos::NodeStatusEnum::eProvisioned);
-    if (!err.IsNone()) {
-        aos::common::pbconvert::SetErrorInfo(err, response);
-
-        return mStream->Write(outgoingMsg);
-    }
 
     aos::common::pbconvert::SetErrorInfo(err, response);
 
