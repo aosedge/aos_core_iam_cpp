@@ -7,19 +7,23 @@
 
 #include <gmock/gmock.h>
 
-#include <aos/test/log.hpp>
 #include <google/protobuf/util/message_differencer.h>
 #include <grpcpp/server_builder.h>
-#include <iamanager/v5/iamanager.grpc.pb.h>
 
-#include "iamclient/iamclient.hpp"
+#include <aos/test/log.hpp>
+#include <utils/exception.hpp>
+
+#include <iamanager/v5/iamanager.grpc.pb.h>
 
 #include "mocks/certhandlermock.hpp"
 #include "mocks/certloadermock.hpp"
+#include "mocks/certprovidermock.hpp"
+#include "mocks/cryptomock.hpp"
 #include "mocks/identhandlermock.hpp"
 #include "mocks/nodeinfoprovidermock.hpp"
 #include "mocks/provisionmanagermock.hpp"
-#include "mocks/x509providermock.hpp"
+
+#include "iamclient/iamclient.hpp"
 
 using namespace testing;
 using namespace aos;
@@ -267,7 +271,7 @@ public:
                 }
             }
         } catch (const std::exception& e) {
-            LOG_ERR() << e.what();
+            LOG_ERR() << "Register node failed: err=" << aos::common::utils::ToAosError(e);
         }
 
         LOG_DBG() << "Test server message thread stoped";
@@ -409,7 +413,7 @@ private:
 
 class IAMClientTest : public Test {
 protected:
-    void SetUp() override { InitLog(); }
+    void SetUp() override { test::InitLog(); }
 
     static Config GetConfig()
     {
@@ -435,8 +439,8 @@ protected:
         auto client = std::make_unique<IAMClient>();
 
         assert(client
-                   ->Init(config, &mIdentHandler, mProvisionManager, mCertLoader, mCryptoProvider, mNodeInfoProvider,
-                       provisionMode)
+                   ->Init(config, &mIdentHandler, mCertProvider, mProvisionManager, mCertLoader, mCryptoProvider,
+                       mNodeInfoProvider, provisionMode)
                    .IsNone());
 
         return client;
@@ -473,9 +477,10 @@ protected:
 
     iam::identhandler::IdentHandlerMock         mIdentHandler;
     iam::provisionmanager::ProvisionManagerMock mProvisionManager;
-    CertLoaderItfMock                           mCertLoader;
-    ProviderItfMock                             mCryptoProvider;
-    NodeInfoProviderMock                        mNodeInfoProvider;
+    iam::certprovider::CertProviderMock         mCertProvider;
+    crypto::CertLoaderMock                      mCertLoader;
+    crypto::x509::ProviderMock                  mCryptoProvider;
+    iam::nodeinfoprovider::NodeInfoProviderMock mNodeInfoProvider;
 };
 
 /***********************************************************************************************************************

@@ -17,15 +17,14 @@
 
 #include <aos/common/crypto/utils.hpp>
 #include <aos/iam/certhandler.hpp>
+#include <aos/iam/certprovider.hpp>
 #include <aos/iam/identhandler.hpp>
 #include <aos/iam/nodeinfoprovider.hpp>
 #include <aos/iam/nodemanager.hpp>
 #include <aos/iam/permhandler.hpp>
-#include <aos/iam/provisionmanager.hpp>
+#include <pbconvert/common.hpp>
 
 #include <iamanager/version.grpc.pb.h>
-
-#include "utils/convert.hpp"
 
 #include "nodecontroller.hpp"
 #include "streamwriter.hpp"
@@ -53,13 +52,12 @@ public:
      * @param permHandler permission handler.
      * @param nodeInfoProvider node info provider.
      * @param nodeManager node manager.
-     * @param provisionManager provision manager.
+     * @param certProvider certificate provider.
      */
     aos::Error Init(NodeController& nodeController, aos::iam::identhandler::IdentHandlerItf& identHandler,
         aos::iam::permhandler::PermHandlerItf&           permHandler,
         aos::iam::nodeinfoprovider::NodeInfoProviderItf& nodeInfoProvider,
-        aos::iam::nodemanager::NodeManagerItf&           nodeManager,
-        aos::iam::provisionmanager::ProvisionManagerItf& provisionManager);
+        aos::iam::nodemanager::NodeManagerItf& nodeManager, aos::iam::certprovider::CertProviderItf& certProvider);
 
     /**
      * Registers grpc services.
@@ -107,7 +105,6 @@ protected:
     NodeController*                                  GetNodeController() { return mNodeController; }
     aos::NodeInfo&                                   GetNodeInfo() { return mNodeInfo; }
     aos::iam::nodemanager::NodeManagerItf*           GetNodeManager() { return mNodeManager; }
-    aos::iam::provisionmanager::ProvisionManagerItf* GetProvisionManager() { return mProvisionManager; }
     aos::Error SetNodeStatus(const std::string& nodeID, const aos::NodeStatus& status);
     bool       ProcessOnThisNode(const std::string& nodeID);
 
@@ -120,7 +117,8 @@ protected:
 
         for (auto i = 0; i < cRequestRetryMaxTry; i++) {
             if (mClose) {
-                return utils::ConvertAosErrorToGrpcStatus({aos::ErrorEnum::eWrongState, "handler is closed"});
+                return aos::common::pbconvert::ConvertAosErrorToGrpcStatus(
+                    {aos::ErrorEnum::eWrongState, "handler is closed"});
             }
 
             if (status = request(); status.ok()) {
@@ -178,7 +176,7 @@ private:
     aos::iam::permhandler::PermHandlerItf*           mPermHandler      = nullptr;
     aos::iam::nodeinfoprovider::NodeInfoProviderItf* mNodeInfoProvider = nullptr;
     aos::iam::nodemanager::NodeManagerItf*           mNodeManager      = nullptr;
-    aos::iam::provisionmanager::ProvisionManagerItf* mProvisionManager = nullptr;
+    aos::iam::certprovider::CertProviderItf*         mCertProvider     = nullptr;
     NodeController*                                  mNodeController   = nullptr;
     StreamWriter<iamproto::NodeInfo>                 mNodeChangedController;
     StreamWriter<iamproto::Subjects>                 mSubjectsChangedController;

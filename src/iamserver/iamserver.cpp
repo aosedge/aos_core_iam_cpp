@@ -87,7 +87,7 @@ aos::Error IAMServer::Init(const Config& config, aos::iam::certhandler::CertHand
     aos::iam::identhandler::IdentHandlerItf& identHandler, aos::iam::permhandler::PermHandlerItf& permHandler,
     aos::crypto::CertLoader& certLoader, aos::crypto::x509::ProviderItf& cryptoProvider,
     aos::iam::nodeinfoprovider::NodeInfoProviderItf& nodeInfoProvider,
-    aos::iam::nodemanager::NodeManagerItf&           nodeManager,
+    aos::iam::nodemanager::NodeManagerItf& nodeManager, aos::iam::certprovider::CertProviderItf& certProvider,
     aos::iam::provisionmanager::ProvisionManagerItf& provisionManager, bool provisioningMode)
 {
     LOG_DBG() << "IAM Server init";
@@ -96,25 +96,25 @@ aos::Error IAMServer::Init(const Config& config, aos::iam::certhandler::CertHand
     mCertLoader     = &certLoader;
     mCryptoProvider = &cryptoProvider;
 
-    aos::Error    err;
-    aos::NodeInfo nodeInfo;
+    aos::Error err;
+    auto       nodeInfo = std::make_unique<aos::NodeInfo>();
 
-    if (err = nodeInfoProvider.GetNodeInfo(nodeInfo); !err.IsNone()) {
+    if (err = nodeInfoProvider.GetNodeInfo(*nodeInfo); !err.IsNone()) {
         return AOS_ERROR_WRAP(err);
     }
 
-    if (err = nodeManager.SetNodeInfo(nodeInfo); !err.IsNone()) {
+    if (err = nodeManager.SetNodeInfo(*nodeInfo); !err.IsNone()) {
         return AOS_ERROR_WRAP(err);
     }
 
     if (err = mPublicMessageHandler.Init(
-            mNodeController, identHandler, permHandler, nodeInfoProvider, nodeManager, provisionManager);
+            mNodeController, identHandler, permHandler, nodeInfoProvider, nodeManager, certProvider);
         !err.IsNone()) {
         return AOS_ERROR_WRAP(err);
     }
 
     if (err = mProtectedMessageHandler.Init(
-            mNodeController, identHandler, permHandler, nodeInfoProvider, nodeManager, provisionManager);
+            mNodeController, identHandler, permHandler, nodeInfoProvider, nodeManager, certProvider, provisionManager);
         !err.IsNone()) {
         return AOS_ERROR_WRAP(err);
     }
@@ -143,10 +143,8 @@ aos::Error IAMServer::Init(const Config& config, aos::iam::certhandler::CertHand
 
         Start();
 
-    } catch (const aos::common::utils::AosException& e) {
-        return e.GetError();
     } catch (const std::exception& e) {
-        return {aos::ErrorEnum::eFailed, e.what()};
+        return AOS_ERROR_WRAP(aos::common::utils::ToAosError(e));
     }
 
     if (err = nodeManager.SubscribeNodeInfoChange(static_cast<aos::iam::nodemanager::NodeInfoListenerItf&>(*this));

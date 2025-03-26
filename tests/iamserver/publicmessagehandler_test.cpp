@@ -19,10 +19,11 @@
 
 #include "iamserver/publicmessagehandler.hpp"
 
+#include "mocks/certprovidermock.hpp"
 #include "mocks/identhandlermock.hpp"
 #include "mocks/nodeinfoprovidermock.hpp"
 #include "mocks/nodemanagermock.hpp"
-#include "mocks/permissionhandlermock.hpp"
+#include "mocks/permhandlermock.hpp"
 #include "mocks/provisionmanagermock.hpp"
 #include "stubs/storagestub.hpp"
 
@@ -66,8 +67,9 @@ protected:
     // mocks
     aos::iam::identhandler::IdentHandlerMock         mIdentHandler;
     aos::iam::permhandler::PermHandlerMock           mPermHandler;
-    NodeInfoProviderMock                             mNodeInfoProvider;
-    NodeManagerMock                                  mNodeManager;
+    aos::iam::nodeinfoprovider::NodeInfoProviderMock mNodeInfoProvider;
+    aos::iam::nodemanager::NodeManagerMock           mNodeManager;
+    aos::iam::certprovider::CertProviderMock         mCertProvider;
     aos::iam::provisionmanager::ProvisionManagerMock mProvisionManager;
 
 private:
@@ -77,7 +79,7 @@ private:
 
 void PublicMessageHandlerTest::SetUp()
 {
-    aos::InitLog();
+    aos::test::InitLog();
 
     EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillRepeatedly(Invoke([&](aos::NodeInfo& nodeInfo) {
         nodeInfo.mNodeID   = "node0";
@@ -90,7 +92,7 @@ void PublicMessageHandlerTest::SetUp()
     }));
 
     auto err = mPublicMessageHandler.Init(
-        mNodeController, mIdentHandler, mPermHandler, mNodeInfoProvider, mNodeManager, mProvisionManager);
+        mNodeController, mIdentHandler, mPermHandler, mNodeInfoProvider, mNodeManager, mCertProvider);
 
     ASSERT_TRUE(err.IsNone()) << "Failed to initialize public message handler: " << err.Message();
 
@@ -170,7 +172,7 @@ TEST_F(PublicMessageHandlerTest, GetCertSucceeds)
     certInfo.mKeyURL  = "test-key-url";
     certInfo.mCertURL = "test-cert-url";
 
-    EXPECT_CALL(mProvisionManager, GetCert)
+    EXPECT_CALL(mCertProvider, GetCert)
         .WillOnce(
             Invoke([&certInfo](const aos::String&, const aos::Array<uint8_t>&, const aos::Array<uint8_t>&, auto& out) {
                 out = certInfo;
@@ -205,7 +207,7 @@ TEST_F(PublicMessageHandlerTest, GetCertFails)
     certInfo.mKeyURL  = "test-key-url";
     certInfo.mCertURL = "test-cert-url";
 
-    EXPECT_CALL(mProvisionManager, GetCert)
+    EXPECT_CALL(mCertProvider, GetCert)
         .WillOnce(
             Invoke([&certInfo](const aos::String&, const aos::Array<uint8_t>&, const aos::Array<uint8_t>&, auto& out) {
                 out = certInfo;
@@ -233,7 +235,7 @@ TEST_F(PublicMessageHandlerTest, SubscribeCertChangedSucceeds)
     certInfo.mKeyURL  = "test-key-url";
     certInfo.mCertURL = "test-cert-url";
 
-    EXPECT_CALL(mProvisionManager, SubscribeCertChanged)
+    EXPECT_CALL(mCertProvider, SubscribeCertChanged)
         .WillOnce(Invoke([&certInfo](const aos::String&, aos::iam::certhandler::CertReceiverItf& receiver) {
             receiver.OnCertChanged(certInfo);
 
@@ -267,7 +269,7 @@ TEST_F(PublicMessageHandlerTest, SubscribeCertChangedFailed)
 
     request.set_type("test-type");
 
-    EXPECT_CALL(mProvisionManager, SubscribeCertChanged)
+    EXPECT_CALL(mCertProvider, SubscribeCertChanged)
         .WillOnce(Invoke(
             [](const aos::String&, aos::iam::certhandler::CertReceiverItf&) { return aos::ErrorEnum::eFailed; }));
 

@@ -16,10 +16,11 @@
 
 #include "iamserver/protectedmessagehandler.hpp"
 
+#include "mocks/certprovidermock.hpp"
 #include "mocks/identhandlermock.hpp"
 #include "mocks/nodeinfoprovidermock.hpp"
 #include "mocks/nodemanagermock.hpp"
-#include "mocks/permissionhandlermock.hpp"
+#include "mocks/permhandlermock.hpp"
 #include "mocks/provisionmanagermock.hpp"
 #include "stubs/storagestub.hpp"
 
@@ -65,9 +66,10 @@ protected:
     // mocks
     aos::iam::identhandler::IdentHandlerMock         mIdentHandler;
     aos::iam::permhandler::PermHandlerMock           mPermHandler;
-    NodeInfoProviderMock                             mNodeInfoProvider;
-    NodeManagerMock                                  mNodeManager;
+    aos::iam::nodeinfoprovider::NodeInfoProviderMock mNodeInfoProvider;
+    aos::iam::nodemanager::NodeManagerMock           mNodeManager;
     aos::iam::provisionmanager::ProvisionManagerMock mProvisionManager;
+    aos::iam::certprovider::CertProviderMock         mCertProvider;
 
 private:
     void SetUp() override;
@@ -86,7 +88,7 @@ void ProtectedMessageHandlerTest::InitServer()
 
 void ProtectedMessageHandlerTest::SetUp()
 {
-    aos::InitLog();
+    aos::test::InitLog();
 
     EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillRepeatedly(Invoke([&](aos::NodeInfo& nodeInfo) {
         nodeInfo.mNodeID   = "node0";
@@ -98,8 +100,8 @@ void ProtectedMessageHandlerTest::SetUp()
         return aos::ErrorEnum::eNone;
     }));
 
-    auto err = mServerHandler.Init(
-        mNodeController, mIdentHandler, mPermHandler, mNodeInfoProvider, mNodeManager, mProvisionManager);
+    auto err = mServerHandler.Init(mNodeController, mIdentHandler, mPermHandler, mNodeInfoProvider, mNodeManager,
+        mCertProvider, mProvisionManager);
 
     ASSERT_TRUE(err.IsNone()) << "Failed to initialize public message handler: " << err.Message();
 
