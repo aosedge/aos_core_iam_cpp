@@ -27,7 +27,7 @@ namespace aos::iam::config {
 /*
  * Identifier plugin parameters.
  */
-struct Identifier {
+struct IdentifierConfig {
     std::string        mPlugin;
     Poco::Dynamic::Var mParams;
 };
@@ -106,12 +106,42 @@ struct NodeInfoConfig {
 };
 
 /**
- * Migration configuration.
+ * Database configuration.
  */
-struct MigrationConfig {
+struct DatabaseConfig {
+    std::string                        mWorkingDir;
     std::string                        mMigrationPath;
     std::string                        mMergedMigrationPath;
     std::map<std::string, std::string> mPathToPin;
+};
+
+/**
+ * Common config params for IAM client/server.
+ */
+struct IAMConfig {
+    std::string              mCACert;
+    std::string              mCertStorage;
+    std::vector<std::string> mStartProvisioningCmdArgs;
+    std::vector<std::string> mDiskEncryptionCmdArgs;
+    std::vector<std::string> mFinishProvisioningCmdArgs;
+    std::vector<std::string> mDeprovisionCmdArgs;
+};
+
+/**
+ * Configuration for IAM client.
+ */
+struct IAMClientConfig : IAMConfig {
+    std::string             mMainIAMPublicServerURL;
+    std::string             mMainIAMProtectedServerURL;
+    common::utils::Duration mNodeReconnectInterval;
+};
+
+/**
+ * Configuration for IAM client.
+ */
+struct IAMServerConfig : IAMConfig {
+    std::string mIAMPublicServerURL;
+    std::string mIAMProtectedServerURL;
 };
 
 /*
@@ -119,22 +149,12 @@ struct MigrationConfig {
  */
 struct Config {
     NodeInfoConfig            mNodeInfo;
-    std::string               mIAMPublicServerURL;
-    std::string               mIAMProtectedServerURL;
-    std::string               mMainIAMPublicServerURL;
-    std::string               mMainIAMProtectedServerURL;
-    common::utils::Duration   mNodeReconnectInterval;
-    std::string               mCACert;
-    std::string               mCertStorage;
-    std::string               mWorkingDir;
-    MigrationConfig           mMigration;
+    IAMClientConfig           mIAMClient;
+    IAMServerConfig           mIAMServer;
+    DatabaseConfig            mDatabase;
+    IdentifierConfig          mIdentifier;
     std::vector<ModuleConfig> mCertModules;
-    std::vector<std::string>  mStartProvisioningCmdArgs;
-    std::vector<std::string>  mDiskEncryptionCmdArgs;
-    std::vector<std::string>  mFinishProvisioningCmdArgs;
-    std::vector<std::string>  mDeprovisionCmdArgs;
     bool                      mEnablePermissionsHandler;
-    Identifier                mIdentifier;
 };
 
 /*******************************************************************************

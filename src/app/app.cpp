@@ -169,13 +169,13 @@ void App::initialize(Application& self)
     auto config = config::ParseConfig(mConfigFile.empty() ? cDefaultConfigFile : mConfigFile);
     AOS_ERROR_CHECK_AND_THROW("can't parse config", config.mError);
 
-    err = mDatabase.Init(config.mValue.mWorkingDir, config.mValue.mMigration);
+    err = mDatabase.Init(config.mValue.mDatabase);
     AOS_ERROR_CHECK_AND_THROW("can't initialize database", err);
 
     err = mNodeInfoProvider.Init(config.mValue.mNodeInfo);
     AOS_ERROR_CHECK_AND_THROW("can't initialize node info provider", err);
 
-    err = InitIdentifierModule(config.mValue);
+    err = InitIdentifierModule(config.mValue.mIdentifier);
     AOS_ERROR_CHECK_AND_THROW("can't initialize identifier module", err);
 
     if (config.mValue.mEnablePermissionsHandler) {
@@ -200,14 +200,15 @@ void App::initialize(Application& self)
     err = mCertProvider.Init(mCertHandler);
     AOS_ERROR_CHECK_AND_THROW("can't initialize cert provider", err);
 
-    err = mIAMServer.Init(config.mValue, mCertHandler, *mIdentifier, *mPermHandler, mCertLoader, mCryptoProvider,
-        mNodeInfoProvider, mNodeManager, mCertProvider, mProvisionManager, mProvisioning);
+    err = mIAMServer.Init(config.mValue.mIAMServer, mCertHandler, *mIdentifier, *mPermHandler, mCertLoader,
+        mCryptoProvider, mNodeInfoProvider, mNodeManager, mCertProvider, mProvisionManager, mProvisioning);
     AOS_ERROR_CHECK_AND_THROW("can't initialize IAM server", err);
 
-    if (!config.mValue.mMainIAMPublicServerURL.empty() && !config.mValue.mMainIAMProtectedServerURL.empty()) {
+    const auto& clientConfig = config.mValue.mIAMClient;
+    if (!clientConfig.mMainIAMPublicServerURL.empty() && !clientConfig.mMainIAMProtectedServerURL.empty()) {
         mIAMClient = std::make_unique<iamclient::IAMClient>();
 
-        err = mIAMClient->Init(config.mValue, mIdentifier.get(), mCertProvider, mProvisionManager, mCertLoader,
+        err = mIAMClient->Init(clientConfig, mIdentifier.get(), mCertProvider, mProvisionManager, mCertLoader,
             mCryptoProvider, mNodeInfoProvider, mProvisioning);
         AOS_ERROR_CHECK_AND_THROW("can't initialize IAM client", err);
     }
@@ -393,17 +394,17 @@ Error App::InitCertModules(const config::Config& config)
     return ErrorEnum::eNone;
 }
 
-Error App::InitIdentifierModule(const config::Config& config)
+Error App::InitIdentifierModule(const config::IdentifierConfig& config)
 {
-    if (config.mIdentifier.mPlugin == "fileidentifier") {
+    if (config.mPlugin == "fileidentifier") {
         auto fileIdentifier = std::make_unique<fileidentifier::FileIdentifier>();
 
-        if (auto err = fileIdentifier->Init(config.mIdentifier, mIAMServer); !err.IsNone()) {
+        if (auto err = fileIdentifier->Init(config, mIAMServer); !err.IsNone()) {
             return err;
         }
 
         mIdentifier = std::move(fileIdentifier);
-    } else if (config.mIdentifier.mPlugin == "visidentifier") {
+    } else if (config.mPlugin == "visidentifier") {
         auto visIdentifier = std::make_unique<visidentifier::VISIdentifier>();
 
         if (auto err = visIdentifier->Init(config, mIAMServer); !err.IsNone()) {
