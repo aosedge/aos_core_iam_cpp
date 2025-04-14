@@ -12,7 +12,6 @@
 
 #include <aos/test/log.hpp>
 
-#include <aos/common/crypto/mbedtls/cryptoprovider.hpp>
 #include <aos/iam/certhandler.hpp>
 #include <aos/iam/certmodules/pkcs11/pkcs11.hpp>
 #include <utils/grpchelper.hpp>
