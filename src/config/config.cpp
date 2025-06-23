@@ -20,6 +20,10 @@
 #include "config.hpp"
 #include "logger/logmodule.hpp"
 
+namespace aos::iam::config {
+
+namespace {
+
 /***********************************************************************************************************************
  * Constants
  **********************************************************************************************************************/
@@ -33,23 +37,21 @@ constexpr auto cDefaultNodeIDPath             = "/etc/machine-id";
  * Static
  **********************************************************************************************************************/
 
-namespace {
-
-Identifier ParseIdentifier(const aos::common::utils::CaseInsensitiveObjectWrapper& object)
+IdentifierConfig ParseIdentifier(const aos::common::utils::CaseInsensitiveObjectWrapper& object)
 {
-    return Identifier {object.GetValue<std::string>("plugin"), object.Get("params")};
+    return IdentifierConfig {object.GetValue<std::string>("plugin"), object.Get("params")};
 }
 
-ModuleConfig ParseModuleConfig(const aos::common::utils::CaseInsensitiveObjectWrapper& object)
+ModuleConfig ParseModuleConfig(const common::utils::CaseInsensitiveObjectWrapper& object)
 {
     return ModuleConfig {
         object.GetValue<std::string>("id"),
         object.GetValue<std::string>("plugin"),
         object.GetValue<std::string>("algorithm"),
         object.GetValue<int>("maxItems"),
-        aos::common::utils::GetArrayValue<std::string>(
+        common::utils::GetArrayValue<std::string>(
             object, "extendedKeyUsage", [](const Poco::Dynamic::Var& value) { return value.convert<std::string>(); }),
-        aos::common::utils::GetArrayValue<std::string>(
+        common::utils::GetArrayValue<std::string>(
             object, "alternativeNames", [](const Poco::Dynamic::Var& value) { return value.convert<std::string>(); }),
         object.GetValue<bool>("disabled"),
         object.GetValue<bool>("skipValidation"),
@@ -58,14 +60,14 @@ ModuleConfig ParseModuleConfig(const aos::common::utils::CaseInsensitiveObjectWr
     };
 }
 
-PartitionInfoConfig ParsePartitionInfoConfig(const aos::common::utils::CaseInsensitiveObjectWrapper& object)
+PartitionInfoConfig ParsePartitionInfoConfig(const common::utils::CaseInsensitiveObjectWrapper& object)
 {
     PartitionInfoConfig partitionInfoConfig {};
 
     partitionInfoConfig.mName = object.GetValue<std::string>("name");
     partitionInfoConfig.mPath = object.GetValue<std::string>("path");
 
-    const auto& types = aos::common::utils::GetArrayValue<std::string>(
+    const auto& types = common::utils::GetArrayValue<std::string>(
         object, "types", [](const Poco::Dynamic::Var& value) { return value.convert<std::string>(); });
 
     for (const auto& type : types) {
@@ -75,7 +77,7 @@ PartitionInfoConfig ParsePartitionInfoConfig(const aos::common::utils::CaseInsen
     return partitionInfoConfig;
 }
 
-NodeInfoConfig ParseNodeInfoConfig(const aos::common::utils::CaseInsensitiveObjectWrapper& object)
+NodeInfoConfig ParseNodeInfoConfig(const common::utils::CaseInsensitiveObjectWrapper& object)
 {
     NodeInfoConfig nodeInfoConfig {};
 
@@ -96,31 +98,79 @@ NodeInfoConfig ParseNodeInfoConfig(const aos::common::utils::CaseInsensitiveObje
     }
 
     if (object.Has("partitions")) {
-        nodeInfoConfig.mPartitions = aos::common::utils::GetArrayValue<PartitionInfoConfig>(
+        nodeInfoConfig.mPartitions = common::utils::GetArrayValue<PartitionInfoConfig>(
             object, "partitions", [](const Poco::Dynamic::Var& value) {
                 return ParsePartitionInfoConfig(
-                    aos::common::utils::CaseInsensitiveObjectWrapper(value.extract<Poco::JSON::Object::Ptr>()));
+                    common::utils::CaseInsensitiveObjectWrapper(value.extract<Poco::JSON::Object::Ptr>()));
             });
     }
 
     return nodeInfoConfig;
 }
 
-MigrationConfig ParseMigrationConfig(
-    const aos::common::utils::CaseInsensitiveObjectWrapper& migration, const std::vector<ModuleConfig>& moduleConfigs)
+IAMConfig ParseIAMConfig(const common::utils::CaseInsensitiveObjectWrapper& object)
 {
-    MigrationConfig config {};
+    IAMConfig config;
 
+    config.mCACert                   = object.GetValue<std::string>("caCert");
+    config.mCertStorage              = object.GetValue<std::string>("certStorage");
+    config.mStartProvisioningCmdArgs = common::utils::GetArrayValue<std::string>(object, "startProvisioningCmdArgs",
+        [](const Poco::Dynamic::Var& value) { return value.convert<std::string>(); });
+    config.mDiskEncryptionCmdArgs    = common::utils::GetArrayValue<std::string>(
+        object, "diskEncryptionCmdArgs", [](const Poco::Dynamic::Var& value) { return value.convert<std::string>(); });
+    config.mFinishProvisioningCmdArgs = common::utils::GetArrayValue<std::string>(object, "finishProvisioningCmdArgs",
+        [](const Poco::Dynamic::Var& value) { return value.convert<std::string>(); });
+    config.mDeprovisionCmdArgs        = common::utils::GetArrayValue<std::string>(
+        object, "deprovisionCmdArgs", [](const Poco::Dynamic::Var& value) { return value.convert<std::string>(); });
+
+    return config;
+}
+
+IAMClientConfig ParseIAMClientConfig(const common::utils::CaseInsensitiveObjectWrapper& object)
+{
+    IAMClientConfig config;
+    static_cast<IAMConfig&>(config) = ParseIAMConfig(object);
+
+    config.mMainIAMPublicServerURL    = object.GetValue<std::string>("mainIAMPublicServerURL");
+    config.mMainIAMProtectedServerURL = object.GetValue<std::string>("mainIAMProtectedServerURL");
+    auto nodeReconnectInterval        = object.GetOptionalValue<std::string>("nodeReconnectInterval").value_or("10s");
+
+    Error err                               = ErrorEnum::eNone;
+    Tie(config.mNodeReconnectInterval, err) = common::utils::ParseDuration(nodeReconnectInterval);
+    AOS_ERROR_CHECK_AND_THROW(err, "nodeReconnectInterval parse error");
+
+    return config;
+}
+
+IAMServerConfig ParseIAMServerConfig(const common::utils::CaseInsensitiveObjectWrapper& object)
+{
+    IAMServerConfig config;
+    static_cast<IAMConfig&>(config) = ParseIAMConfig(object);
+
+    config.mIAMPublicServerURL    = object.GetValue<std::string>("iamPublicServerURL");
+    config.mIAMProtectedServerURL = object.GetValue<std::string>("iamProtectedServerURL");
+
+    return config;
+}
+
+DatabaseConfig ParseDatabaseConfig(
+    const common::utils::CaseInsensitiveObjectWrapper& object, const std::vector<ModuleConfig>& moduleConfigs)
+{
+    auto migration = object.GetObject("migration");
+
+    DatabaseConfig config {};
+
+    config.mWorkingDir          = object.GetValue<std::string>("workingDir");
     config.mMigrationPath       = migration.GetValue<std::string>("migrationPath");
     config.mMergedMigrationPath = migration.GetValue<std::string>("mergedMigrationPath");
 
     for (const auto& moduleConfig : moduleConfigs) {
-        aos::common::utils::CaseInsensitiveObjectWrapper object(moduleConfig.mParams);
+        common::utils::CaseInsensitiveObjectWrapper params(moduleConfig.mParams);
 
-        std::string                             pinPath = object.GetValue<std::string>("userPinPath");
-        aos::StaticString<aos::pkcs11::cPINLen> userPIN;
+        std::string                   pinPath = params.GetValue<std::string>("userPinPath");
+        StaticString<pkcs11::cPINLen> userPIN;
 
-        auto err = aos::FS::ReadFileToString(pinPath.c_str(), userPIN);
+        auto err = fs::ReadFileToString(pinPath.c_str(), userPIN);
         if (!err.IsNone()) {
             continue;
         }
@@ -137,75 +187,50 @@ MigrationConfig ParseMigrationConfig(
  * Public functions
  **********************************************************************************************************************/
 
-aos::RetWithError<Config> ParseConfig(const std::string& filename)
+RetWithError<Config> ParseConfig(const std::string& filename)
 {
     std::ifstream file(filename);
 
     if (!file.is_open()) {
-        return {Config {}, aos::ErrorEnum::eNotFound};
+        return {Config {}, ErrorEnum::eNotFound};
     }
 
     Config config {};
 
     try {
-        Poco::JSON::Parser                               parser;
-        auto                                             result = parser.parse(file);
-        aos::common::utils::CaseInsensitiveObjectWrapper object(result.extract<Poco::JSON::Object::Ptr>());
+        Poco::JSON::Parser                          parser;
+        auto                                        result = parser.parse(file);
+        common::utils::CaseInsensitiveObjectWrapper object(result.extract<Poco::JSON::Object::Ptr>());
 
-        config.mNodeInfo                  = ParseNodeInfoConfig(object.GetObject("nodeInfo"));
-        config.mIAMPublicServerURL        = object.GetValue<std::string>("iamPublicServerURL");
-        config.mIAMProtectedServerURL     = object.GetValue<std::string>("iamProtectedServerURL");
-        config.mMainIAMPublicServerURL    = object.GetValue<std::string>("mainIAMPublicServerURL");
-        config.mMainIAMProtectedServerURL = object.GetValue<std::string>("mainIAMProtectedServerURL");
+        config.mCertModules
+            = common::utils::GetArrayValue<ModuleConfig>(object, "certModules", [](const Poco::Dynamic::Var& value) {
+                  return ParseModuleConfig(
+                      common::utils::CaseInsensitiveObjectWrapper(value.extract<Poco::JSON::Object::Ptr>()));
+              });
 
-        config.mCACert                   = object.GetValue<std::string>("caCert");
-        config.mCertStorage              = object.GetValue<std::string>("certStorage");
-        config.mWorkingDir               = object.GetValue<std::string>("workingDir");
+        config.mNodeInfo                 = ParseNodeInfoConfig(object.GetObject("nodeInfo"));
+        config.mIAMClient                = ParseIAMClientConfig(object);
+        config.mIAMServer                = ParseIAMServerConfig(object);
+        config.mDatabase                 = ParseDatabaseConfig(object, config.mCertModules);
         config.mEnablePermissionsHandler = object.GetValue<bool>("enablePermissionsHandler");
-
-        config.mStartProvisioningCmdArgs = aos::common::utils::GetArrayValue<std::string>(object,
-            "startProvisioningCmdArgs", [](const Poco::Dynamic::Var& value) { return value.convert<std::string>(); });
-
-        config.mDiskEncryptionCmdArgs = aos::common::utils::GetArrayValue<std::string>(object, "diskEncryptionCmdArgs",
-            [](const Poco::Dynamic::Var& value) { return value.convert<std::string>(); });
-
-        config.mFinishProvisioningCmdArgs = aos::common::utils::GetArrayValue<std::string>(object,
-            "finishProvisioningCmdArgs", [](const Poco::Dynamic::Var& value) { return value.convert<std::string>(); });
-
-        config.mDeprovisionCmdArgs = aos::common::utils::GetArrayValue<std::string>(
-            object, "deprovisionCmdArgs", [](const Poco::Dynamic::Var& value) { return value.convert<std::string>(); });
-
-        config.mCertModules = aos::common::utils::GetArrayValue<ModuleConfig>(
-            object, "certModules", [](const Poco::Dynamic::Var& value) {
-                return ParseModuleConfig(
-                    aos::common::utils::CaseInsensitiveObjectWrapper(value.extract<Poco::JSON::Object::Ptr>()));
-            });
-
-        config.mMigration = ParseMigrationConfig(object.GetObject("migration"), config.mCertModules);
 
         if (object.Has("identifier")) {
             config.mIdentifier = ParseIdentifier(object.GetObject("identifier"));
         }
 
-        aos::Error err                          = aos::ErrorEnum::eNone;
-        Tie(config.mNodeReconnectInterval, err) = aos::common::utils::ParseDuration(
-            object.GetOptionalValue<std::string>("nodeReconnectInterval").value_or("10s"));
-        if (!err.IsNone()) {
-            return {{}, AOS_ERROR_WRAP(err)};
-        }
     } catch (const std::exception& e) {
-        return {{}, aos::common::utils::ToAosError(e, aos::ErrorEnum::eInvalidArgument)};
+        return {{}, common::utils::ToAosError(e, ErrorEnum::eInvalidArgument)};
     }
 
     return config;
 }
 
-aos::RetWithError<PKCS11ModuleParams> ParsePKCS11ModuleParams(Poco::Dynamic::Var params)
+RetWithError<PKCS11ModuleParams> ParsePKCS11ModuleParams(Poco::Dynamic::Var params)
 {
     PKCS11ModuleParams moduleParams;
 
     try {
-        aos::common::utils::CaseInsensitiveObjectWrapper object(params.extract<Poco::JSON::Object::Ptr>());
+        common::utils::CaseInsensitiveObjectWrapper object(params.extract<Poco::JSON::Object::Ptr>());
 
         moduleParams.mLibrary         = object.GetValue<std::string>("library");
         moduleParams.mSlotID          = object.GetOptionalValue<uint32_t>("slotID");
@@ -217,26 +242,49 @@ aos::RetWithError<PKCS11ModuleParams> ParsePKCS11ModuleParams(Poco::Dynamic::Var
         moduleParams.mGID             = object.GetOptionalValue<uint32_t>("gid").value_or(0);
 
     } catch (const std::exception& e) {
-        return {{}, aos::common::utils::ToAosError(e, aos::ErrorEnum::eInvalidArgument)};
+        return {{}, common::utils::ToAosError(e, ErrorEnum::eInvalidArgument)};
     }
 
     return moduleParams;
 }
 
-aos::RetWithError<VISIdentifierModuleParams> ParseVISIdentifierModuleParams(Poco::Dynamic::Var params)
+RetWithError<VISIdentifierModuleParams> ParseVISIdentifierModuleParams(Poco::Dynamic::Var params)
 {
     VISIdentifierModuleParams moduleParams;
 
     try {
-        aos::common::utils::CaseInsensitiveObjectWrapper object(params.extract<Poco::JSON::Object::Ptr>());
+        common::utils::CaseInsensitiveObjectWrapper object(params.extract<Poco::JSON::Object::Ptr>());
 
-        moduleParams.mVISServer        = object.GetValue<std::string>("visServer");
-        moduleParams.mCaCertFile       = object.GetValue<std::string>("caCertFile");
-        moduleParams.mWebSocketTimeout = object.GetValue<int>("webSocketTimeout");
+        moduleParams.mVISServer  = object.GetValue<std::string>("visServer");
+        moduleParams.mCaCertFile = object.GetValue<std::string>("caCertFile");
 
+        Error err;
+
+        Tie(moduleParams.mWebSocketTimeout, err)
+            = common::utils::ParseDuration(object.GetValue<std::string>("webSocketTimeout", "120s"));
+        AOS_ERROR_CHECK_AND_THROW(err, "failed to parse webSocketTimeout");
     } catch (const std::exception& e) {
-        return {{}, aos::common::utils::ToAosError(e, aos::ErrorEnum::eInvalidArgument)};
+        return {{}, common::utils::ToAosError(e, ErrorEnum::eInvalidArgument)};
     }
 
     return moduleParams;
 }
+
+RetWithError<FileIdentifierModuleParams> ParseFileIdentifierModuleParams(Poco::Dynamic::Var params)
+{
+    FileIdentifierModuleParams moduleParams;
+
+    try {
+        common::utils::CaseInsensitiveObjectWrapper object(params.extract<Poco::JSON::Object::Ptr>());
+
+        moduleParams.mSystemIDPath  = object.GetValue<std::string>("systemIDPath");
+        moduleParams.mUnitModelPath = object.GetValue<std::string>("unitModelPath");
+        moduleParams.mSubjectsPath  = object.GetValue<std::string>("subjectsPath");
+    } catch (const std::exception& e) {
+        return {{}, common::utils::ToAosError(e, ErrorEnum::eInvalidArgument)};
+    }
+
+    return moduleParams;
+}
+
+} // namespace aos::iam::config

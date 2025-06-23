@@ -15,6 +15,8 @@
 
 using namespace testing;
 
+namespace aos::iam::config {
+
 /***********************************************************************************************************************
  * Static
  **********************************************************************************************************************/
@@ -132,7 +134,7 @@ protected:
 TEST_F(ConfigTest, ParseConfig)
 {
     auto [config, error] = ParseConfig(mFileName);
-    ASSERT_EQ(error, aos::ErrorEnum::eNone);
+    ASSERT_EQ(error, ErrorEnum::eNone);
 
     EXPECT_EQ(config.mNodeInfo.mNodeIDPath, "NodeIDPath");
     EXPECT_EQ(config.mNodeInfo.mNodeType, "NodeType");
@@ -159,17 +161,22 @@ TEST_F(ConfigTest, ParseConfig)
     EXPECT_EQ(config.mNodeInfo.mPartitions[2].mPath, "path3");
     ASSERT_TRUE(config.mNodeInfo.mPartitions[2].mTypes.empty());
 
-    EXPECT_EQ(config.mIAMPublicServerURL, "localhost:8090");
-    EXPECT_EQ(config.mIAMProtectedServerURL, "localhost:8089");
-    EXPECT_EQ(config.mCACert, "/etc/ssl/certs/rootCA.crt");
-    EXPECT_EQ(config.mCertStorage, "/var/aos/crypt/iam/");
-    EXPECT_EQ(config.mWorkingDir, "/var/aos/iamanager");
-    EXPECT_EQ(config.mMigration.mMigrationPath, "/usr/share/aos/iam/migration");
-    EXPECT_EQ(config.mMigration.mMergedMigrationPath, "/var/aos/workdirs/iam/migration");
-    EXPECT_EQ(config.mEnablePermissionsHandler, true);
+    EXPECT_EQ(config.mIAMServer.mIAMPublicServerURL, "localhost:8090");
+    EXPECT_EQ(config.mIAMServer.mIAMProtectedServerURL, "localhost:8089");
+    EXPECT_EQ(config.mIAMServer.mCACert, "/etc/ssl/certs/rootCA.crt");
+    EXPECT_EQ(config.mIAMServer.mCertStorage, "/var/aos/crypt/iam/");
+    EXPECT_EQ(config.mIAMServer.mFinishProvisioningCmdArgs, std::vector<std::string> {"/var/aos/finish.sh"});
+    EXPECT_EQ(config.mIAMServer.mDiskEncryptionCmdArgs, std::vector<std::string>({"/bin/sh", "/var/aos/encrypt.sh"}));
 
-    EXPECT_EQ(config.mFinishProvisioningCmdArgs, std::vector<std::string> {"/var/aos/finish.sh"});
-    EXPECT_EQ(config.mDiskEncryptionCmdArgs, std::vector<std::string>({"/bin/sh", "/var/aos/encrypt.sh"}));
+    EXPECT_EQ(config.mIAMClient.mCACert, "/etc/ssl/certs/rootCA.crt");
+    EXPECT_EQ(config.mIAMClient.mCertStorage, "/var/aos/crypt/iam/");
+    EXPECT_EQ(config.mIAMClient.mFinishProvisioningCmdArgs, std::vector<std::string> {"/var/aos/finish.sh"});
+    EXPECT_EQ(config.mIAMClient.mDiskEncryptionCmdArgs, std::vector<std::string>({"/bin/sh", "/var/aos/encrypt.sh"}));
+
+    EXPECT_EQ(config.mDatabase.mWorkingDir, "/var/aos/iamanager");
+    EXPECT_EQ(config.mDatabase.mMigrationPath, "/usr/share/aos/iam/migration");
+    EXPECT_EQ(config.mDatabase.mMergedMigrationPath, "/var/aos/workdirs/iam/migration");
+    EXPECT_EQ(config.mEnablePermissionsHandler, true);
 
     EXPECT_EQ(config.mCertModules.size(), 3);
 
@@ -229,7 +236,7 @@ TEST_F(ConfigTest, ParsePKCS11ModuleParams)
     params->set("gid", 43);
 
     auto [pkcs11Params, error] = ParsePKCS11ModuleParams(params);
-    ASSERT_EQ(error, aos::ErrorEnum::eNone);
+    ASSERT_EQ(error, ErrorEnum::eNone);
 
     EXPECT_EQ(pkcs11Params.mUserPINPath, "/var/aos/pin");
     EXPECT_EQ(pkcs11Params.mModulePathInURL, true);
@@ -246,12 +253,29 @@ TEST_F(ConfigTest, ParseVISIdentifierModuleParams)
     Poco::JSON::Object::Ptr params = new Poco::JSON::Object();
     params->set("visServer", "localhost:8089");
     params->set("caCertFile", "/etc/ssl/certs/rootCA.crt");
-    params->set("webSocketTimeout", 100);
+    params->set("webSocketTimeout", "100s");
 
     auto [visParams, error] = ParseVISIdentifierModuleParams(params);
-    ASSERT_EQ(error, aos::ErrorEnum::eNone);
+    ASSERT_EQ(error, ErrorEnum::eNone);
 
     EXPECT_EQ(visParams.mVISServer, "localhost:8089");
     EXPECT_EQ(visParams.mCaCertFile, "/etc/ssl/certs/rootCA.crt");
-    EXPECT_EQ(visParams.mWebSocketTimeout, 100);
+    EXPECT_EQ(visParams.mWebSocketTimeout, 100 * Time::cSeconds);
 }
+
+TEST_F(ConfigTest, ParseFileIdentifierModuleParams)
+{
+    Poco::JSON::Object::Ptr params = new Poco::JSON::Object();
+    params->set("systemIDPath", "test-system-id-path");
+    params->set("unitModelPath", "test-unit-model-path");
+    params->set("subjectsPath", "test-subjects-path");
+
+    auto [fileIdentifierParams, error] = ParseFileIdentifierModuleParams(params);
+    ASSERT_EQ(error, ErrorEnum::eNone);
+
+    EXPECT_EQ(fileIdentifierParams.mSystemIDPath, "test-system-id-path");
+    EXPECT_EQ(fileIdentifierParams.mUnitModelPath, "test-unit-model-path");
+    EXPECT_EQ(fileIdentifierParams.mSubjectsPath, "test-subjects-path");
+}
+
+} // namespace aos::iam::config

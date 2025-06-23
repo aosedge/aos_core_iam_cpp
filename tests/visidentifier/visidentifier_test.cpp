@@ -17,6 +17,10 @@
 
 using namespace testing;
 
+namespace aos::iam::visidentifier {
+
+namespace {
+
 /***********************************************************************************************************************
  * Static
  **********************************************************************************************************************/
@@ -29,8 +33,10 @@ public:
     void           HandleSubscription(const std::string& message) { return VISIdentifier::HandleSubscription(message); }
     void           WaitUntilConnected() { VISIdentifier::WaitUntilConnected(); }
 
-    MOCK_METHOD(aos::Error, InitWSClient, (const Config&), (override));
+    MOCK_METHOD(Error, InitWSClient, (const config::IdentifierConfig&), (override));
 };
+
+} // namespace
 
 /***********************************************************************************************************************
  * Suite
@@ -38,22 +44,22 @@ public:
 
 class VisidentifierTest : public testing::Test {
 protected:
-    const std::string               cTestSubscriptionId {"1234-4321"};
-    const VISIdentifierModuleParams cVISConfig {"vis-service", "ca-path", 1};
+    const std::string                       cTestSubscriptionId {"1234-4321"};
+    const config::VISIdentifierModuleParams cVISConfig {"vis-service", "ca-path", 1};
 
-    WSClientEvent                                mWSClientEvent;
-    aos::iam::identhandler::SubjectsObserverMock mVISSubjectsObserverMock;
-    WSClientMockPtr                              mWSClientItfMockPtr {std::make_shared<StrictMock<WSClientMock>>()};
-    TestVISIdentifier                            mVisIdentifier;
-    Config                                       mConfig;
+    WSClientEvent                           mWSClientEvent;
+    iam::identhandler::SubjectsObserverMock mVISSubjectsObserverMock;
+    WSClientMockPtr                         mWSClientItfMockPtr {std::make_shared<StrictMock<WSClientMock>>()};
+    TestVISIdentifier                       mVisIdentifier;
+    config::IdentifierConfig                mConfig;
 
     // This method is called before any test cases in the test suite
     static void SetUpTestSuite()
     {
-        static aos::common::logger::Logger mLogger;
+        static common::logger::Logger mLogger;
 
-        mLogger.SetBackend(aos::common::logger::Logger::Backend::eStdIO);
-        mLogger.SetLogLevel(aos::LogLevelEnum::eDebug);
+        mLogger.SetBackend(common::logger::Logger::Backend::eStdIO);
+        mLogger.SetLogLevel(LogLevelEnum::eDebug);
         mLogger.Init();
     }
 
@@ -63,14 +69,14 @@ protected:
 
         object->set("VISServer", cVISConfig.mVISServer);
         object->set("caCertFile", cVISConfig.mCaCertFile);
-        object->set("webSocketTimeout", cVISConfig.mWebSocketTimeout);
+        object->set("webSocketTimeout", std::to_string(cVISConfig.mWebSocketTimeout.Seconds()));
 
-        mConfig.mIdentifier.mParams = object;
+        mConfig.mParams = object;
 
         mVisIdentifier.SetWSClient(mWSClientItfMockPtr);
     }
 
-    void TearDown() override
+    void ExpectStopSucceeded()
     {
         if (mVisIdentifier.GetWSClient() != nullptr) {
             ExpectUnsubscribeAllIsSent();
@@ -80,6 +86,8 @@ protected:
                 mWSClientEvent.Set(WSClientEvent::EventEnum::CLOSED, "mock closed");
             }));
         }
+
+        mVisIdentifier.Stop();
     }
 
     void ExpectSubscribeSucceeded()
@@ -108,17 +116,18 @@ protected:
                 }));
     }
 
-    void ExpectInitSucceeded()
+    void ExpectStartSucceeded()
     {
         mVisIdentifier.SetWSClient(mWSClientItfMockPtr);
 
         ExpectSubscribeSucceeded();
         EXPECT_CALL(*mWSClientItfMockPtr, Connect).Times(1);
-        EXPECT_CALL(mVisIdentifier, InitWSClient).WillOnce(Return(aos::ErrorEnum::eNone));
+        EXPECT_CALL(mVisIdentifier, InitWSClient).WillOnce(Return(ErrorEnum::eNone));
         EXPECT_CALL(*mWSClientItfMockPtr, WaitForEvent).WillOnce(Invoke([this]() { return mWSClientEvent.Wait(); }));
 
-        const auto err = mVisIdentifier.Init(mConfig, mVISSubjectsObserverMock);
-        ASSERT_TRUE(err.IsNone()) << err.Message();
+        ASSERT_TRUE(mVisIdentifier.Init(mConfig, mVISSubjectsObserverMock).IsNone());
+
+        ASSERT_TRUE(mVisIdentifier.Start().IsNone());
 
         mVisIdentifier.WaitUntilConnected();
     }
@@ -147,23 +156,23 @@ protected:
 TEST_F(VisidentifierTest, InitFailsOnEmptyConfig)
 {
     VISIdentifier identifier;
+    ASSERT_TRUE(identifier.Init(config::IdentifierConfig {}, mVISSubjectsObserverMock).IsNone());
 
-    const auto err = identifier.Init(Config {}, mVISSubjectsObserverMock);
-    ASSERT_FALSE(err.IsNone()) << err.Message();
+    EXPECT_FALSE(identifier.Start().IsNone());
 }
 
 TEST_F(VisidentifierTest, SubscriptionNotificationReceivedAndObserverIsNotified)
 {
-    ExpectInitSucceeded();
+    ExpectStartSucceeded();
 
-    aos::StaticArray<aos::StaticString<aos::cSubjectIDLen>, 3> subjects;
+    StaticArray<StaticString<cSubjectIDLen>, 3> subjects;
 
     EXPECT_CALL(mVISSubjectsObserverMock, SubjectsChanged)
         .Times(1)
         .WillOnce(Invoke([&subjects](const auto& newSubjects) {
             subjects = newSubjects;
 
-            return aos::ErrorEnum::eNone;
+            return ErrorEnum::eNone;
         }));
 
     const std::string cSubscriptionNotificationJson
@@ -178,24 +187,27 @@ TEST_F(VisidentifierTest, SubscriptionNotificationReceivedAndObserverIsNotified)
         EXPECT_CALL(mVISSubjectsObserverMock, SubjectsChanged).Times(0);
         mVisIdentifier.HandleSubscription(cSubscriptionNotificationJson);
     }
+
+    ExpectStopSucceeded();
 }
 
 TEST_F(VisidentifierTest, SubscriptionNotificationNestedJsonReceivedAndObserverIsNotified)
 {
-    ExpectInitSucceeded();
+    ExpectStartSucceeded();
 
-    aos::StaticArray<aos::StaticString<aos::cSubjectIDLen>, 3> subjects;
+    StaticArray<StaticString<cSubjectIDLen>, 3> subjects;
 
     EXPECT_CALL(mVISSubjectsObserverMock, SubjectsChanged)
         .Times(1)
         .WillOnce(Invoke([&subjects](const auto& newSubjects) {
             subjects = newSubjects;
 
-            return aos::ErrorEnum::eNone;
+            return ErrorEnum::eNone;
         }));
 
     const std::string cSubscriptionNotificationJson
-        = R"({"action":"subscription","subscriptionId":"1234-4321","value":{"Attribute.Aos.Subjects": [11,12,13]}, "timestamp": 0})";
+        = R"({"action":"subscription","subscriptionId":"1234-4321","value":{"Attribute.Aos.Subjects": [11,12,13]},
+        "timestamp": 0})";
 
     mVisIdentifier.HandleSubscription(cSubscriptionNotificationJson);
 
@@ -206,30 +218,36 @@ TEST_F(VisidentifierTest, SubscriptionNotificationNestedJsonReceivedAndObserverI
         EXPECT_CALL(mVISSubjectsObserverMock, SubjectsChanged).Times(0);
         mVisIdentifier.HandleSubscription(cSubscriptionNotificationJson);
     }
+
+    ExpectStopSucceeded();
 }
 
 TEST_F(VisidentifierTest, SubscriptionNotificationReceivedUnknownSubscriptionId)
 {
-    ExpectInitSucceeded();
+    ExpectStartSucceeded();
 
     EXPECT_CALL(mVISSubjectsObserverMock, SubjectsChanged).Times(0);
 
     mVisIdentifier.HandleSubscription(
         R"({"action":"subscription","subscriptionId":"unknown-subscriptionId","value":[11,12,13], "timestamp": 0})");
+
+    ExpectStopSucceeded();
 }
 
 TEST_F(VisidentifierTest, SubscriptionNotificationReceivedInvalidPayload)
 {
-    ExpectInitSucceeded();
+    ExpectStartSucceeded();
 
     EXPECT_CALL(mVISSubjectsObserverMock, SubjectsChanged).Times(0);
 
     ASSERT_NO_THROW(mVisIdentifier.HandleSubscription(R"({cActionTagName})"));
+
+    ExpectStopSucceeded();
 }
 
 TEST_F(VisidentifierTest, SubscriptionNotificationValueExceedsMaxLimit)
 {
-    ExpectInitSucceeded();
+    ExpectStartSucceeded();
 
     EXPECT_CALL(mVISSubjectsObserverMock, SubjectsChanged).Times(0);
 
@@ -238,17 +256,19 @@ TEST_F(VisidentifierTest, SubscriptionNotificationValueExceedsMaxLimit)
     notification.set("action", "subscription");
     notification.set("timestamp", 0);
     notification.set("subscriptionId", cTestSubscriptionId);
-    notification.set("value", std::vector<std::string>(aos::cMaxSubjectIDSize + 1, "test"));
+    notification.set("value", std::vector<std::string>(cMaxSubjectIDSize + 1, "test"));
 
     std::ostringstream jsonStream;
     Poco::JSON::Stringifier::stringify(notification, jsonStream);
 
     ASSERT_NO_THROW(mVisIdentifier.HandleSubscription(jsonStream.str()));
+
+    ExpectStopSucceeded();
 }
 
 TEST_F(VisidentifierTest, ReconnectOnFailSendFrame)
 {
-    EXPECT_CALL(mVisIdentifier, InitWSClient).WillRepeatedly(Return(aos::ErrorEnum::eNone));
+    EXPECT_CALL(mVisIdentifier, InitWSClient).WillRepeatedly(Return(ErrorEnum::eNone));
     EXPECT_CALL(*mWSClientItfMockPtr, Disconnect).Times(1);
     EXPECT_CALL(*mWSClientItfMockPtr, Connect).Times(2);
 
@@ -272,15 +292,17 @@ TEST_F(VisidentifierTest, ReconnectOnFailSendFrame)
             return {str.cbegin(), str.cend()};
         }));
 
-    const auto err = mVisIdentifier.Init(mConfig, mVISSubjectsObserverMock);
-    ASSERT_TRUE(err.IsNone()) << err.Message();
+    EXPECT_TRUE(mVisIdentifier.Init(mConfig, mVISSubjectsObserverMock).IsNone());
+    EXPECT_TRUE(mVisIdentifier.Start().IsNone());
 
     mVisIdentifier.WaitUntilConnected();
+
+    ExpectStopSucceeded();
 }
 
 TEST_F(VisidentifierTest, GetSystemIDSucceeds)
 {
-    ExpectInitSucceeded();
+    ExpectStartSucceeded();
 
     const std::string cExpectedSystemId {"expectedSystemId"};
 
@@ -302,17 +324,19 @@ TEST_F(VisidentifierTest, GetSystemIDSucceeds)
             return {str.cbegin(), str.cend()};
         }));
 
-    aos::StaticString<aos::cSystemIDLen> systemId;
-    aos::Error                           err;
+    StaticString<cSystemIDLen> systemId;
+    Error                      err;
 
     Tie(systemId, err) = mVisIdentifier.GetSystemID();
     EXPECT_TRUE(err.IsNone()) << err.Message();
     EXPECT_STREQ(systemId.CStr(), cExpectedSystemId.c_str());
+
+    ExpectStopSucceeded();
 }
 
 TEST_F(VisidentifierTest, GetSystemIDNestedValueTagSucceeds)
 {
-    ExpectInitSucceeded();
+    ExpectStartSucceeded();
 
     const std::string cExpectedSystemId {"expectedSystemId"};
 
@@ -337,17 +361,19 @@ TEST_F(VisidentifierTest, GetSystemIDNestedValueTagSucceeds)
             return {str.cbegin(), str.cend()};
         }));
 
-    aos::StaticString<aos::cSystemIDLen> systemId;
-    aos::Error                           err;
+    StaticString<cSystemIDLen> systemId;
+    Error                      err;
 
     Tie(systemId, err) = mVisIdentifier.GetSystemID();
     EXPECT_TRUE(err.IsNone()) << err.Message();
     EXPECT_STREQ(systemId.CStr(), cExpectedSystemId.c_str());
+
+    ExpectStopSucceeded();
 }
 
 TEST_F(VisidentifierTest, GetSystemIDExceedsMaxSize)
 {
-    ExpectInitSucceeded();
+    ExpectStartSucceeded();
 
     EXPECT_CALL(*mWSClientItfMockPtr, GenerateRequestID).Times(1);
     EXPECT_CALL(*mWSClientItfMockPtr, SendRequest)
@@ -357,7 +383,7 @@ TEST_F(VisidentifierTest, GetSystemIDExceedsMaxSize)
             response.set("action", "get");
             response.set("requestId", "requestId");
             response.set("timestamp", 0);
-            response.set("value", std::string(aos::cSystemIDLen + 1, '1'));
+            response.set("value", std::string(cSystemIDLen + 1, '1'));
 
             std::ostringstream jsonStream;
             Poco::JSON::Stringifier::stringify(response, jsonStream);
@@ -368,12 +394,14 @@ TEST_F(VisidentifierTest, GetSystemIDExceedsMaxSize)
         }));
 
     const auto err = mVisIdentifier.GetSystemID();
-    EXPECT_TRUE(err.mError.Is(aos::ErrorEnum::eNoMemory)) << err.mError.Message();
+    EXPECT_TRUE(err.mError.Is(ErrorEnum::eNoMemory)) << err.mError.Message();
+
+    ExpectStopSucceeded();
 }
 
 TEST_F(VisidentifierTest, GetSystemIDRequestFailed)
 {
-    ExpectInitSucceeded();
+    ExpectStartSucceeded();
 
     EXPECT_CALL(*mWSClientItfMockPtr, GenerateRequestID).Times(1);
     EXPECT_CALL(*mWSClientItfMockPtr, SendRequest)
@@ -382,12 +410,14 @@ TEST_F(VisidentifierTest, GetSystemIDRequestFailed)
         }));
 
     const auto err = mVisIdentifier.GetSystemID();
-    EXPECT_TRUE(err.mError.Is(aos::ErrorEnum::eFailed)) << err.mError.Message();
+    EXPECT_TRUE(err.mError.Is(ErrorEnum::eFailed)) << err.mError.Message();
+
+    ExpectStopSucceeded();
 }
 
 TEST_F(VisidentifierTest, GetUnitModelExceedsMaxSize)
 {
-    ExpectInitSucceeded();
+    ExpectStartSucceeded();
 
     EXPECT_CALL(*mWSClientItfMockPtr, GenerateRequestID).Times(1);
     EXPECT_CALL(*mWSClientItfMockPtr, SendRequest)
@@ -397,7 +427,7 @@ TEST_F(VisidentifierTest, GetUnitModelExceedsMaxSize)
             response.set("action", "get");
             response.set("requestId", "test-requestId");
             response.set("timestamp", 0);
-            response.set("value", std::string(aos::cUnitModelLen + 1, '1'));
+            response.set("value", std::string(cUnitModelLen + 1, '1'));
 
             std::ostringstream jsonStream;
             Poco::JSON::Stringifier::stringify(response, jsonStream);
@@ -408,12 +438,14 @@ TEST_F(VisidentifierTest, GetUnitModelExceedsMaxSize)
         }));
 
     const auto err = mVisIdentifier.GetUnitModel();
-    EXPECT_TRUE(err.mError.Is(aos::ErrorEnum::eNoMemory)) << err.mError.Message();
+    EXPECT_TRUE(err.mError.Is(ErrorEnum::eNoMemory)) << err.mError.Message();
+
+    ExpectStopSucceeded();
 }
 
 TEST_F(VisidentifierTest, GetUnitModelRequestFailed)
 {
-    ExpectInitSucceeded();
+    ExpectStartSucceeded();
 
     EXPECT_CALL(*mWSClientItfMockPtr, GenerateRequestID).Times(1);
     EXPECT_CALL(*mWSClientItfMockPtr, SendRequest)
@@ -422,12 +454,14 @@ TEST_F(VisidentifierTest, GetUnitModelRequestFailed)
         }));
 
     const auto err = mVisIdentifier.GetUnitModel();
-    EXPECT_TRUE(err.mError.Is(aos::ErrorEnum::eFailed)) << err.mError.Message();
+    EXPECT_TRUE(err.mError.Is(ErrorEnum::eFailed)) << err.mError.Message();
+
+    ExpectStopSucceeded();
 }
 
 TEST_F(VisidentifierTest, GetSubjectsRequestFailed)
 {
-    ExpectInitSucceeded();
+    ExpectStartSucceeded();
 
     EXPECT_CALL(*mWSClientItfMockPtr, GenerateRequestID).Times(1);
     EXPECT_CALL(*mWSClientItfMockPtr, SendRequest)
@@ -435,8 +469,12 @@ TEST_F(VisidentifierTest, GetSubjectsRequestFailed)
             throw WSException("mock");
         }));
 
-    aos::StaticArray<aos::StaticString<aos::cSubjectIDLen>, aos::cMaxSubjectIDSize> subjects;
-    const auto err = mVisIdentifier.GetSubjects(subjects);
-    EXPECT_TRUE(err.Is(aos::ErrorEnum::eFailed));
+    StaticArray<StaticString<cSubjectIDLen>, cMaxSubjectIDSize> subjects;
+    const auto                                                  err = mVisIdentifier.GetSubjects(subjects);
+    EXPECT_TRUE(err.Is(ErrorEnum::eFailed));
     EXPECT_TRUE(subjects.IsEmpty());
+
+    ExpectStopSucceeded();
 }
+
+} // namespace aos::iam::visidentifier

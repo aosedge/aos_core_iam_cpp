@@ -11,34 +11,38 @@
 
 using namespace testing;
 
+namespace aos::iam::database {
+
+namespace {
+
 /***********************************************************************************************************************
  * Utils
  **********************************************************************************************************************/
 
 template <typename T1, typename T2>
-void FillArray(const std::initializer_list<T1>& src, aos::Array<T2>& dst)
+void FillArray(const std::initializer_list<T1>& src, Array<T2>& dst)
 {
     for (const auto& val : src) {
         ASSERT_TRUE(dst.PushBack(val).IsNone());
     }
 }
 
-static aos::CPUInfo CreateCPUInfo()
+CPUInfo CreateCPUInfo()
 {
-    aos::CPUInfo cpuInfo;
+    CPUInfo cpuInfo;
 
     cpuInfo.mModelName  = "11th Gen Intel(R) Core(TM) i7-1185G7 @ 3.00GHz";
     cpuInfo.mNumCores   = 4;
     cpuInfo.mNumThreads = 4;
     cpuInfo.mArch       = "GenuineIntel";
-    cpuInfo.mArchFamily = "6";
+    cpuInfo.mArchFamily.SetValue("6");
 
     return cpuInfo;
 }
 
-static aos::PartitionInfo CreatePartitionInfo(const char* name, const std::initializer_list<const char*> types)
+PartitionInfo CreatePartitionInfo(const char* name, const std::initializer_list<const char*> types)
 {
-    aos::PartitionInfo partitionInfo;
+    PartitionInfo partitionInfo;
 
     partitionInfo.mName = name;
     FillArray(types, partitionInfo.mTypes);
@@ -49,9 +53,9 @@ static aos::PartitionInfo CreatePartitionInfo(const char* name, const std::initi
     return partitionInfo;
 }
 
-static aos::NodeAttribute CreateAttribute(const char* name, const char* value)
+NodeAttribute CreateAttribute(const char* name, const char* value)
 {
-    aos::NodeAttribute attribute;
+    NodeAttribute attribute;
 
     attribute.mName  = name;
     attribute.mValue = value;
@@ -59,14 +63,14 @@ static aos::NodeAttribute CreateAttribute(const char* name, const char* value)
     return attribute;
 }
 
-static aos::NodeInfo DefaultNodeInfo(const char* id = "node0")
+NodeInfo DefaultNodeInfo(const char* id = "node0")
 {
-    aos::NodeInfo nodeInfo;
+    NodeInfo nodeInfo;
 
     nodeInfo.mNodeID   = id;
     nodeInfo.mNodeType = "main";
     nodeInfo.mName     = "node0";
-    nodeInfo.mStatus   = aos::NodeStatusEnum::eProvisioned;
+    nodeInfo.mStatus   = NodeStatusEnum::eProvisioned;
     nodeInfo.mOSType   = "linux";
     FillArray({CreateCPUInfo(), CreateCPUInfo(), CreateCPUInfo()}, nodeInfo.mCPUs);
     FillArray({CreatePartitionInfo("trace", {"tracefs"}), CreatePartitionInfo("tmp", {})}, nodeInfo.mPartitions);
@@ -77,7 +81,7 @@ static aos::NodeInfo DefaultNodeInfo(const char* id = "node0")
     return nodeInfo;
 }
 
-static void CreateSessionTable(Poco::Data::Session& session)
+void CreateSessionTable(Poco::Data::Session& session)
 {
     session << "CREATE TABLE IF NOT EXISTS certificates ("
                "type TEXT NOT NULL,"
@@ -97,7 +101,7 @@ void CreateVersionTable(Poco::Data::Session& session, int version)
         Poco::Data::Keywords::now;
 }
 
-static void AddCertificate(Poco::Data::Session& session, const std::string& type, const std::vector<uint8_t>& issuer,
+void AddCertificate(Poco::Data::Session& session, const std::string& type, const std::vector<uint8_t>& issuer,
     const std::vector<uint8_t>& serial, const std::string& certURL, const std::string& keyURL)
 {
     using Poco::Data::Keywords::bind;
@@ -117,9 +121,9 @@ std::string GetMigrationSourceDir()
 }
 
 template <typename T>
-const aos::Array<T> ToArray(std::vector<T>& src)
+const Array<T> ToArray(std::vector<T>& src)
 {
-    return aos::Array<T>(src.data(), src.size());
+    return Array<T>(src.data(), src.size());
 }
 
 class TestDatabase : public Database {
@@ -131,6 +135,8 @@ private:
 
     int mVersion = 1;
 };
+
+} // namespace
 
 /***********************************************************************************************************************
  * Suite
@@ -149,25 +155,26 @@ protected:
         auto migrationDst = fs::current_path() / cMigrationPath;
         auto workingDir   = fs::current_path() / cWorkingDir;
 
-        mMigrationConfig.mMigrationPath       = cMigrationPath;
-        mMigrationConfig.mMergedMigrationPath = cMergedMigrationPath;
+        mDatabaseConfig.mWorkingDir          = workingDir;
+        mDatabaseConfig.mMigrationPath       = cMigrationPath;
+        mDatabaseConfig.mMergedMigrationPath = cMergedMigrationPath;
 
         fs::create_directories(cMigrationPath);
 
         mCMPinPath = workingDir / "cm.path.txt";
         mSMPinPath = (workingDir / "sm.path.txt");
 
-        mMigrationConfig.mPathToPin[mCMPinPath] = "ca3b303c3c3f572e87c97a753cc7f5";
-        mMigrationConfig.mPathToPin[mSMPinPath] = "ca3b303c3c3f572e87c97a753cc7f6";
+        mDatabaseConfig.mPathToPin[mCMPinPath] = "ca3b303c3c3f572e87c97a753cc7f5";
+        mDatabaseConfig.mPathToPin[mSMPinPath] = "ca3b303c3c3f572e87c97a753cc7f6";
 
         fs::copy(migrationSrc, migrationDst, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
     }
 
     void TearDown() override { std::filesystem::remove_all(cWorkingDir); }
 
-    const aos::Array<uint8_t> StringToDN(const char* str)
+    const Array<uint8_t> StringToDN(const char* str)
     {
-        return aos::Array<uint8_t>(reinterpret_cast<const uint8_t*>(str), strlen(str) + 1);
+        return Array<uint8_t>(reinterpret_cast<const uint8_t*>(str), strlen(str) + 1);
     }
 
 protected:
@@ -177,8 +184,8 @@ protected:
 
     std::string mCMPinPath, mSMPinPath;
 
-    MigrationConfig mMigrationConfig;
-    TestDatabase    mDB;
+    config::DatabaseConfig mDatabaseConfig;
+    TestDatabase           mDB;
 };
 
 /***********************************************************************************************************************
@@ -187,140 +194,140 @@ protected:
 
 TEST_F(DatabaseTest, AddCertInfo)
 {
-    aos::iam::certhandler::CertInfo certInfo;
+    iam::certhandler::CertInfo certInfo;
 
     certInfo.mIssuer   = StringToDN("issuer");
     certInfo.mSerial   = StringToDN("serial");
     certInfo.mCertURL  = "certURL";
     certInfo.mKeyURL   = "keyURL";
-    certInfo.mNotAfter = aos::Time::Now();
+    certInfo.mNotAfter = Time::Now();
 
-    EXPECT_EQ(mDB.Init(cWorkingDir, mMigrationConfig), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.Init(mDatabaseConfig), ErrorEnum::eNone);
 
-    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), aos::ErrorEnum::eNone);
-    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), aos::ErrorEnum::eFailed);
+    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), ErrorEnum::eNone);
+    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), ErrorEnum::eFailed);
 
     certInfo.mIssuer  = StringToDN("issuer2");
     certInfo.mSerial  = StringToDN("serial2");
     certInfo.mCertURL = "certURL2";
     certInfo.mKeyURL  = "keyURL2";
 
-    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), ErrorEnum::eNone);
 }
 
 TEST_F(DatabaseTest, RemoveCertInfo)
 {
-    EXPECT_EQ(mDB.Init(cWorkingDir, mMigrationConfig), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.Init(mDatabaseConfig), ErrorEnum::eNone);
 
-    aos::iam::certhandler::CertInfo certInfo;
+    iam::certhandler::CertInfo certInfo;
 
     certInfo.mIssuer  = StringToDN("issuer");
     certInfo.mSerial  = StringToDN("serial");
     certInfo.mCertURL = "certURL";
     certInfo.mKeyURL  = "keyURL";
 
-    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), ErrorEnum::eNone);
 
-    EXPECT_EQ(mDB.RemoveCertInfo("type", "certURL"), aos::ErrorEnum::eNone);
-    EXPECT_EQ(mDB.RemoveCertInfo("type", "certURL"), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.RemoveCertInfo("type", "certURL"), ErrorEnum::eNone);
+    EXPECT_EQ(mDB.RemoveCertInfo("type", "certURL"), ErrorEnum::eNone);
 }
 
 TEST_F(DatabaseTest, RemoveAllCertsInfo)
 {
-    EXPECT_EQ(mDB.Init(cWorkingDir, mMigrationConfig), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.Init(mDatabaseConfig), ErrorEnum::eNone);
 
-    aos::iam::certhandler::CertInfo certInfo;
+    iam::certhandler::CertInfo certInfo;
 
     certInfo.mIssuer  = StringToDN("issuer");
     certInfo.mSerial  = StringToDN("serial");
     certInfo.mCertURL = "certURL";
     certInfo.mKeyURL  = "keyURL";
 
-    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), ErrorEnum::eNone);
 
     certInfo.mIssuer  = StringToDN("issuer2");
     certInfo.mSerial  = StringToDN("serial2");
     certInfo.mCertURL = "certURL2";
     certInfo.mKeyURL  = "keyURL2";
 
-    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), ErrorEnum::eNone);
 
-    EXPECT_EQ(mDB.RemoveAllCertsInfo("type"), aos::ErrorEnum::eNone);
-    EXPECT_EQ(mDB.RemoveAllCertsInfo("type"), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.RemoveAllCertsInfo("type"), ErrorEnum::eNone);
+    EXPECT_EQ(mDB.RemoveAllCertsInfo("type"), ErrorEnum::eNone);
 }
 
 TEST_F(DatabaseTest, GetCertInfo)
 {
-    EXPECT_EQ(mDB.Init(cWorkingDir, mMigrationConfig), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.Init(mDatabaseConfig), ErrorEnum::eNone);
 
-    aos::iam::certhandler::CertInfo certInfo {};
+    iam::certhandler::CertInfo certInfo {};
 
-    EXPECT_EQ(mDB.GetCertInfo(certInfo.mIssuer, certInfo.mSerial, certInfo), aos::ErrorEnum::eNotFound);
+    EXPECT_EQ(mDB.GetCertInfo(certInfo.mIssuer, certInfo.mSerial, certInfo), ErrorEnum::eNotFound);
 
     certInfo.mIssuer   = StringToDN("issuer");
     certInfo.mSerial   = StringToDN("serial");
     certInfo.mCertURL  = "certURL";
     certInfo.mKeyURL   = "keyURL";
-    certInfo.mNotAfter = aos::Time::Now();
+    certInfo.mNotAfter = Time::Now();
 
-    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), ErrorEnum::eNone);
 
-    aos::iam::certhandler::CertInfo certInfo2;
+    iam::certhandler::CertInfo certInfo2;
 
     certInfo2.mIssuer   = StringToDN("issuer2");
     certInfo2.mSerial   = StringToDN("serial2");
     certInfo2.mCertURL  = "certURL2";
     certInfo2.mKeyURL   = "keyURL2";
-    certInfo2.mNotAfter = aos::Time::Now();
+    certInfo2.mNotAfter = Time::Now();
 
-    EXPECT_EQ(mDB.AddCertInfo("type", certInfo2), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.AddCertInfo("type", certInfo2), ErrorEnum::eNone);
 
-    aos::iam::certhandler::CertInfo certInfoStored {};
+    iam::certhandler::CertInfo certInfoStored {};
 
-    EXPECT_EQ(mDB.GetCertInfo(certInfo.mIssuer, certInfo.mSerial, certInfoStored), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.GetCertInfo(certInfo.mIssuer, certInfo.mSerial, certInfoStored), ErrorEnum::eNone);
     EXPECT_EQ(certInfo, certInfoStored);
 
-    EXPECT_EQ(mDB.GetCertInfo(certInfo2.mIssuer, certInfo2.mSerial, certInfoStored), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.GetCertInfo(certInfo2.mIssuer, certInfo2.mSerial, certInfoStored), ErrorEnum::eNone);
     EXPECT_EQ(certInfo2, certInfoStored);
 }
 
 TEST_F(DatabaseTest, GetCertsInfo)
 {
-    EXPECT_EQ(mDB.Init(cWorkingDir, mMigrationConfig), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.Init(mDatabaseConfig), ErrorEnum::eNone);
 
-    aos::StaticArray<aos::iam::certhandler::CertInfo, 2> certsInfo;
+    StaticArray<iam::certhandler::CertInfo, 2> certsInfo;
 
-    EXPECT_EQ(mDB.GetCertsInfo("type", certsInfo), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.GetCertsInfo("type", certsInfo), ErrorEnum::eNone);
     EXPECT_TRUE(certsInfo.IsEmpty());
 
-    aos::iam::certhandler::CertInfo certInfo;
+    iam::certhandler::CertInfo certInfo;
 
     certInfo.mIssuer   = StringToDN("issuer");
     certInfo.mSerial   = StringToDN("serial");
     certInfo.mCertURL  = "certURL";
     certInfo.mKeyURL   = "keyURL";
-    certInfo.mNotAfter = aos::Time::Now();
+    certInfo.mNotAfter = Time::Now();
 
-    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.AddCertInfo("type", certInfo), ErrorEnum::eNone);
 
-    aos::iam::certhandler::CertInfo certInfo2;
+    iam::certhandler::CertInfo certInfo2;
 
     certInfo2.mIssuer   = StringToDN("issuer2");
     certInfo2.mSerial   = StringToDN("serial2");
     certInfo2.mCertURL  = "certURL2";
     certInfo2.mKeyURL   = "keyURL2";
-    certInfo2.mNotAfter = aos::Time::Now();
+    certInfo2.mNotAfter = Time::Now();
 
-    EXPECT_EQ(mDB.AddCertInfo("type", certInfo2), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.AddCertInfo("type", certInfo2), ErrorEnum::eNone);
 
-    EXPECT_EQ(mDB.GetCertsInfo("type", certsInfo), aos::ErrorEnum::eNone);
+    EXPECT_EQ(mDB.GetCertsInfo("type", certsInfo), ErrorEnum::eNone);
 
     EXPECT_EQ(certsInfo.Size(), 2);
     EXPECT_TRUE(certsInfo[0] == certInfo || certsInfo[1] == certInfo);
     EXPECT_TRUE(certsInfo[0] == certInfo2 || certsInfo[1] == certInfo2);
 
-    aos::StaticArray<aos::iam::certhandler::CertInfo, 1> certsInfoNotEnoughMemory;
-    EXPECT_EQ(mDB.GetCertsInfo("type", certsInfoNotEnoughMemory), aos::ErrorEnum::eNoMemory);
+    StaticArray<iam::certhandler::CertInfo, 1> certsInfoNotEnoughMemory;
+    EXPECT_EQ(mDB.GetCertsInfo("type", certsInfoNotEnoughMemory), ErrorEnum::eNoMemory);
 
     ASSERT_EQ(certsInfoNotEnoughMemory.Size(), 1);
     EXPECT_TRUE(certsInfoNotEnoughMemory[0] == certInfo || certsInfoNotEnoughMemory[0] == certInfo2);
@@ -330,11 +337,11 @@ TEST_F(DatabaseTest, GetNodeInfo)
 {
     const auto& nodeInfo = DefaultNodeInfo();
 
-    ASSERT_TRUE(mDB.Init(cWorkingDir, mMigrationConfig).IsNone());
+    ASSERT_TRUE(mDB.Init(mDatabaseConfig).IsNone());
 
     ASSERT_TRUE(mDB.SetNodeInfo(nodeInfo).IsNone());
 
-    aos::NodeInfo resultNodeInfo;
+    NodeInfo resultNodeInfo;
     ASSERT_TRUE(mDB.GetNodeInfo(nodeInfo.mNodeID, resultNodeInfo).IsNone());
     ASSERT_EQ(resultNodeInfo, nodeInfo);
 }
@@ -345,13 +352,13 @@ TEST_F(DatabaseTest, GetAllNodeIds)
     const auto& node1 = DefaultNodeInfo("node1");
     const auto& node2 = DefaultNodeInfo("node2");
 
-    ASSERT_TRUE(mDB.Init(cWorkingDir, mMigrationConfig).IsNone());
+    ASSERT_TRUE(mDB.Init(mDatabaseConfig).IsNone());
 
     ASSERT_TRUE(mDB.SetNodeInfo(node0).IsNone());
     ASSERT_TRUE(mDB.SetNodeInfo(node1).IsNone());
     ASSERT_TRUE(mDB.SetNodeInfo(node2).IsNone());
 
-    aos::StaticArray<aos::StaticString<aos::cNodeIDLen>, aos::cMaxNumNodes> expectedNodeIds, resultNodeIds;
+    StaticArray<StaticString<cNodeIDLen>, cMaxNumNodes> expectedNodeIds, resultNodeIds;
     FillArray({node0.mNodeID, node1.mNodeID, node2.mNodeID}, expectedNodeIds);
 
     ASSERT_TRUE(mDB.GetAllNodeIds(resultNodeIds).IsNone());
@@ -364,15 +371,15 @@ TEST_F(DatabaseTest, GetAllNodeIdsNotEnoughMemory)
     const auto& node1 = DefaultNodeInfo("node1");
     const auto& node2 = DefaultNodeInfo("node2");
 
-    ASSERT_TRUE(mDB.Init(cWorkingDir, mMigrationConfig).IsNone());
+    ASSERT_TRUE(mDB.Init(mDatabaseConfig).IsNone());
 
     ASSERT_TRUE(mDB.SetNodeInfo(node0).IsNone());
     ASSERT_TRUE(mDB.SetNodeInfo(node1).IsNone());
     ASSERT_TRUE(mDB.SetNodeInfo(node2).IsNone());
 
-    aos::StaticArray<aos::StaticString<aos::cNodeIDLen>, 2> resultNodeIds;
+    StaticArray<StaticString<cNodeIDLen>, 2> resultNodeIds;
 
-    ASSERT_TRUE(mDB.GetAllNodeIds(resultNodeIds).Is(aos::ErrorEnum::eNoMemory));
+    ASSERT_TRUE(mDB.GetAllNodeIds(resultNodeIds).Is(ErrorEnum::eNoMemory));
 }
 
 TEST_F(DatabaseTest, RemoveNodeInfo)
@@ -381,7 +388,7 @@ TEST_F(DatabaseTest, RemoveNodeInfo)
     const auto& node1 = DefaultNodeInfo("node1");
     const auto& node2 = DefaultNodeInfo("node2");
 
-    ASSERT_TRUE(mDB.Init(cWorkingDir, mMigrationConfig).IsNone());
+    ASSERT_TRUE(mDB.Init(mDatabaseConfig).IsNone());
 
     ASSERT_TRUE(mDB.SetNodeInfo(node0).IsNone());
     ASSERT_TRUE(mDB.SetNodeInfo(node1).IsNone());
@@ -389,7 +396,7 @@ TEST_F(DatabaseTest, RemoveNodeInfo)
 
     ASSERT_TRUE(mDB.RemoveNodeInfo(node1.mNodeID).IsNone());
 
-    aos::StaticArray<aos::StaticString<aos::cNodeIDLen>, aos::cMaxNumNodes> expectedNodeIds, resultNodeIds;
+    StaticArray<StaticString<cNodeIDLen>, cMaxNumNodes> expectedNodeIds, resultNodeIds;
     FillArray({node0.mNodeID, node2.mNodeID}, expectedNodeIds);
 
     ASSERT_TRUE(mDB.GetAllNodeIds(resultNodeIds).IsNone());
@@ -420,7 +427,7 @@ TEST_F(DatabaseTest, MigrateVer0To1)
 
     // Migrate to Version1
     mDB.SetVersion(1);
-    ASSERT_TRUE(mDB.Init(cWorkingDir, mMigrationConfig).IsNone());
+    ASSERT_TRUE(mDB.Init(mDatabaseConfig).IsNone());
 
     // Check certificates
     const std::string cCMVer1URL = "pkcs11:token=aoscore;object=sm;id=%2C%38%6B%2F%64%1D%6A%5E%92%2E%74%55%51%5D%93%4F?"
@@ -430,7 +437,7 @@ TEST_F(DatabaseTest, MigrateVer0To1)
                                    "module-path=/usr/lib/softhsm/libsofthsm2.so&pin-source="
         + mSMPinPath;
 
-    aos::iam::certhandler::CertInfo certInfo {};
+    iam::certhandler::CertInfo certInfo {};
 
     ASSERT_TRUE(mDB.GetCertInfo(ToArray(cCM), ToArray(cCM), certInfo).IsNone());
     EXPECT_EQ(certInfo.mCertURL.CStr(), cCMVer1URL);
@@ -467,7 +474,7 @@ TEST_F(DatabaseTest, MigrateVer1To0)
 
     // Migrate to Version0
     mDB.SetVersion(0);
-    ASSERT_TRUE(mDB.Init(cWorkingDir, mMigrationConfig).IsNone());
+    ASSERT_TRUE(mDB.Init(mDatabaseConfig).IsNone());
 
     // Check certificates
     const std::string cCMVer0URL
@@ -477,7 +484,7 @@ TEST_F(DatabaseTest, MigrateVer1To0)
         = "pkcs11:token=aoscore;object=cm;id=%2A%AD%9F%7E%2A%33%15%1F%22%39%F1%57%F4%E8%CF%3A?"
           "module-path=/usr/lib/softhsm/libsofthsm2.so&pin-value=ca3b303c3c3f572e87c97a753cc7f6";
 
-    aos::iam::certhandler::CertInfo certInfo {};
+    iam::certhandler::CertInfo certInfo {};
 
     ASSERT_TRUE(mDB.GetCertInfo(ToArray(cCM), ToArray(cCM), certInfo).IsNone());
     EXPECT_EQ(certInfo.mCertURL.CStr(), cCMVer0URL);
@@ -487,3 +494,5 @@ TEST_F(DatabaseTest, MigrateVer1To0)
     EXPECT_EQ(certInfo.mCertURL.CStr(), cSMVer0URL);
     EXPECT_EQ(certInfo.mKeyURL.CStr(), cSMVer0URL);
 }
+
+} // namespace aos::iam::database

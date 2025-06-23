@@ -18,28 +18,34 @@
 
 using namespace testing;
 
+namespace aos::iam::visidentifier {
+
+namespace {
+
 /***********************************************************************************************************************
  * Static
  **********************************************************************************************************************/
 
-static const std::string cWebSocketURI("wss://localhost:4566");
-static const std::string cServerCertPath("certificates/ca.pem");
-static const std::string cServerKeyPath("certificates/ca.key");
-static const std::string cClientCertPath {"certificates/client.cer"};
+const std::string cWebSocketURI("wss://localhost:4566");
+const std::string cServerCertPath("certificates/ca.pem");
+const std::string cServerKeyPath("certificates/ca.key");
+const std::string cClientCertPath {"certificates/client.cer"};
 
-static Config CreateConfigWithVisParams(const VISIdentifierModuleParams& config)
+config::IdentifierConfig CreateConfigWithVisParams(const config::VISIdentifierModuleParams& params)
 {
     Poco::JSON::Object::Ptr object = new Poco::JSON::Object();
 
-    object->set("VISServer", config.mVISServer);
-    object->set("caCertFile", config.mCaCertFile);
-    object->set("webSocketTimeout", config.mWebSocketTimeout);
+    object->set("VISServer", params.mVISServer);
+    object->set("caCertFile", params.mCaCertFile);
+    object->set("webSocketTimeout", std::to_string(params.mWebSocketTimeout.Seconds()));
 
-    Config cfg;
-    cfg.mIdentifier.mParams = object;
+    config::IdentifierConfig cfg;
+    cfg.mParams = object;
 
     return cfg;
 }
+
+} // namespace
 
 /***********************************************************************************************************************
  * Suite
@@ -47,7 +53,7 @@ static Config CreateConfigWithVisParams(const VISIdentifierModuleParams& config)
 
 class PocoWSClientTests : public Test {
 protected:
-    static const VISIdentifierModuleParams cConfig;
+    static const config::VISIdentifierModuleParams cConfig;
 
     void SetUp() override
     {
@@ -57,10 +63,10 @@ protected:
     // This method is called before any test cases in the test suite
     static void SetUpTestSuite()
     {
-        static aos::common::logger::Logger mLogger;
+        static common::logger::Logger mLogger;
 
-        mLogger.SetBackend(aos::common::logger::Logger::Backend::eStdIO);
-        mLogger.SetLogLevel(aos::LogLevelEnum::eDebug);
+        mLogger.SetBackend(common::logger::Logger::Backend::eStdIO);
+        mLogger.SetLogLevel(LogLevelEnum::eDebug);
         mLogger.Init();
 
         Poco::Net::initializeSSL();
@@ -80,7 +86,7 @@ protected:
     std::shared_ptr<PocoWSClient> mWsClientPtr;
 };
 
-const VISIdentifierModuleParams PocoWSClientTests::cConfig {cWebSocketURI, cClientCertPath, 5};
+const config::VISIdentifierModuleParams PocoWSClientTests::cConfig {cWebSocketURI, cClientCertPath, 5 * Time::cSeconds};
 
 /***********************************************************************************************************************
  * Tests
@@ -129,7 +135,7 @@ TEST_F(PocoWSClientTests, AsyncSendMessageNotConnected)
 
         mWsClientPtr->AsyncSendMessage(message);
     } catch (const WSException& e) {
-        EXPECT_EQ(e.GetError(), aos::ErrorEnum::eFailed);
+        EXPECT_EQ(e.GetError(), ErrorEnum::eFailed);
     } catch (...) {
         FAIL() << "WSException expected";
     }
@@ -146,7 +152,7 @@ TEST_F(PocoWSClientTests, AsyncSendMessageFails)
 
         mWsClientPtr->AsyncSendMessage(message);
     } catch (const WSException& e) {
-        EXPECT_EQ(e.GetError(), aos::ErrorEnum::eFailed);
+        EXPECT_EQ(e.GetError(), ErrorEnum::eFailed);
     } catch (...) {
         FAIL() << "WSException expected";
     }
@@ -158,12 +164,12 @@ TEST_F(PocoWSClientTests, VisidentifierGetSystemID)
 {
     VISIdentifier visIdentifier;
 
-    Config config = CreateConfigWithVisParams(cConfig);
+    auto config = CreateConfigWithVisParams(cConfig);
 
-    aos::iam::identhandler::SubjectsObserverMock observer;
+    iam::identhandler::SubjectsObserverMock observer;
 
-    auto err = visIdentifier.Init(config, observer);
-    ASSERT_TRUE(err.IsNone()) << err.Message();
+    ASSERT_TRUE(visIdentifier.Init(config, observer).IsNone());
+    ASSERT_TRUE(visIdentifier.Start().IsNone());
 
     const std::string expectedSystemId {"test-system-id"};
     VISParams::Instance().Set("Attribute.Vehicle.VehicleIdentification.VIN", expectedSystemId);
@@ -171,18 +177,20 @@ TEST_F(PocoWSClientTests, VisidentifierGetSystemID)
     const auto systemId = visIdentifier.GetSystemID();
     EXPECT_TRUE(systemId.mError.IsNone()) << systemId.mError.Message();
     EXPECT_STREQ(systemId.mValue.CStr(), expectedSystemId.c_str());
+
+    visIdentifier.Stop();
 }
 
 TEST_F(PocoWSClientTests, VisidentifierGetUnitModel)
 {
     VISIdentifier visIdentifier;
 
-    Config config = CreateConfigWithVisParams(cConfig);
+    auto config = CreateConfigWithVisParams(cConfig);
 
-    aos::iam::identhandler::SubjectsObserverMock observer;
+    iam::identhandler::SubjectsObserverMock observer;
 
-    auto err = visIdentifier.Init(config, observer);
-    ASSERT_TRUE(err.IsNone()) << err.Message();
+    ASSERT_TRUE(visIdentifier.Init(config, observer).IsNone());
+    ASSERT_TRUE(visIdentifier.Start().IsNone());
 
     const std::string expectedUnitModel {"test-unit-model"};
     VISParams::Instance().Set("Attribute.Aos.UnitModel", expectedUnitModel);
@@ -190,31 +198,37 @@ TEST_F(PocoWSClientTests, VisidentifierGetUnitModel)
     const auto unitModel = visIdentifier.GetUnitModel();
     EXPECT_TRUE(unitModel.mError.IsNone()) << unitModel.mError.Message();
     EXPECT_STREQ(unitModel.mValue.CStr(), expectedUnitModel.c_str());
+
+    visIdentifier.Stop();
 }
 
 TEST_F(PocoWSClientTests, VisidentifierGetSubjects)
 {
     VISIdentifier visIdentifier;
 
-    Config config = CreateConfigWithVisParams(cConfig);
+    auto config = CreateConfigWithVisParams(cConfig);
 
-    aos::iam::identhandler::SubjectsObserverMock observer;
+    iam::identhandler::SubjectsObserverMock observer;
 
-    auto err = visIdentifier.Init(config, observer);
-    ASSERT_TRUE(err.IsNone()) << err.Message();
+    ASSERT_TRUE(visIdentifier.Init(config, observer).IsNone());
+    ASSERT_TRUE(visIdentifier.Start().IsNone());
 
     const std::vector<std::string> testSubjects {"1", "2", "3"};
     VISParams::Instance().Set("Attribute.Aos.Subjects", testSubjects);
-    aos::StaticArray<aos::StaticString<aos::cSubjectIDLen>, 3> expectedSubjects;
+    StaticArray<StaticString<cSubjectIDLen>, 3> expectedSubjects;
 
     for (const auto& testSubject : testSubjects) {
         expectedSubjects.PushBack(testSubject.c_str());
     }
 
-    aos::StaticArray<aos::StaticString<aos::cSubjectIDLen>, 3> receivedSubjects;
+    StaticArray<StaticString<cSubjectIDLen>, 3> receivedSubjects;
 
-    err = visIdentifier.GetSubjects(receivedSubjects);
+    const auto err = visIdentifier.GetSubjects(receivedSubjects);
     ASSERT_TRUE(err.IsNone()) << err.Message();
 
     ASSERT_EQ(receivedSubjects, expectedSubjects);
+
+    visIdentifier.Stop();
 }
+
+} // namespace aos::iam::visidentifier

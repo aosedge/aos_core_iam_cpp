@@ -18,6 +18,8 @@
 #include <aos/common/tools/error.hpp>
 #include <utils/time.hpp>
 
+namespace aos::iam::config {
+
 /***********************************************************************************************************************
  * Types
  **********************************************************************************************************************/
@@ -25,7 +27,7 @@
 /*
  * Identifier plugin parameters.
  */
-struct Identifier {
+struct IdentifierConfig {
     std::string        mPlugin;
     Poco::Dynamic::Var mParams;
 };
@@ -50,7 +52,16 @@ struct PKCS11ModuleParams {
 struct VISIdentifierModuleParams {
     std::string mVISServer;
     std::string mCaCertFile;
-    int         mWebSocketTimeout;
+    Duration    mWebSocketTimeout;
+};
+
+/*
+ * File Identifier module parameters.
+ */
+struct FileIdentifierModuleParams {
+    std::string mSystemIDPath;
+    std::string mUnitModelPath;
+    std::string mSubjectsPath;
 };
 
 /*
@@ -95,35 +106,55 @@ struct NodeInfoConfig {
 };
 
 /**
- * Migration configuration.
+ * Database configuration.
  */
-struct MigrationConfig {
+struct DatabaseConfig {
+    std::string                        mWorkingDir;
     std::string                        mMigrationPath;
     std::string                        mMergedMigrationPath;
     std::map<std::string, std::string> mPathToPin;
+};
+
+/**
+ * Common config params for IAM client/server.
+ */
+struct IAMConfig {
+    std::string              mCACert;
+    std::string              mCertStorage;
+    std::vector<std::string> mStartProvisioningCmdArgs;
+    std::vector<std::string> mDiskEncryptionCmdArgs;
+    std::vector<std::string> mFinishProvisioningCmdArgs;
+    std::vector<std::string> mDeprovisionCmdArgs;
+};
+
+/**
+ * Configuration for IAM client.
+ */
+struct IAMClientConfig : IAMConfig {
+    std::string mMainIAMPublicServerURL;
+    std::string mMainIAMProtectedServerURL;
+    Duration    mNodeReconnectInterval;
+};
+
+/**
+ * Configuration for IAM client.
+ */
+struct IAMServerConfig : IAMConfig {
+    std::string mIAMPublicServerURL;
+    std::string mIAMProtectedServerURL;
 };
 
 /*
  * Config instance.
  */
 struct Config {
-    NodeInfoConfig               mNodeInfo;
-    std::string                  mIAMPublicServerURL;
-    std::string                  mIAMProtectedServerURL;
-    std::string                  mMainIAMPublicServerURL;
-    std::string                  mMainIAMProtectedServerURL;
-    aos::common::utils::Duration mNodeReconnectInterval;
-    std::string                  mCACert;
-    std::string                  mCertStorage;
-    std::string                  mWorkingDir;
-    MigrationConfig              mMigration;
-    std::vector<ModuleConfig>    mCertModules;
-    std::vector<std::string>     mStartProvisioningCmdArgs;
-    std::vector<std::string>     mDiskEncryptionCmdArgs;
-    std::vector<std::string>     mFinishProvisioningCmdArgs;
-    std::vector<std::string>     mDeprovisionCmdArgs;
-    bool                         mEnablePermissionsHandler;
-    Identifier                   mIdentifier;
+    NodeInfoConfig            mNodeInfo;
+    IAMClientConfig           mIAMClient;
+    IAMServerConfig           mIAMServer;
+    DatabaseConfig            mDatabase;
+    IdentifierConfig          mIdentifier;
+    std::vector<ModuleConfig> mCertModules;
+    bool                      mEnablePermissionsHandler;
 };
 
 /*******************************************************************************
@@ -136,7 +167,7 @@ struct Config {
  * @param filename config file name.
  * @return config instance.
  */
-aos::RetWithError<Config> ParseConfig(const std::string& filename);
+RetWithError<Config> ParseConfig(const std::string& filename);
 
 /*
  * Parses identifier plugin parameters.
@@ -144,7 +175,7 @@ aos::RetWithError<Config> ParseConfig(const std::string& filename);
  * @param var Poco::Dynamic::Var instance.
  * @return Identifier instance.
  */
-aos::RetWithError<PKCS11ModuleParams> ParsePKCS11ModuleParams(Poco::Dynamic::Var params);
+RetWithError<PKCS11ModuleParams> ParsePKCS11ModuleParams(Poco::Dynamic::Var params);
 
 /*
  * Parses VIS identifier plugin parameters.
@@ -152,6 +183,16 @@ aos::RetWithError<PKCS11ModuleParams> ParsePKCS11ModuleParams(Poco::Dynamic::Var
  * @param var Poco::Dynamic::Var instance.
  * @return VISIdentifierModuleParams instance.
  */
-aos::RetWithError<VISIdentifierModuleParams> ParseVISIdentifierModuleParams(Poco::Dynamic::Var params);
+RetWithError<VISIdentifierModuleParams> ParseVISIdentifierModuleParams(Poco::Dynamic::Var params);
+
+/*
+ * Parses file identifier plugin parameters.
+ *
+ * @param var Poco::Dynamic::Var instance.
+ * @return FileIdentifierModuleParams instance.
+ */
+RetWithError<FileIdentifierModuleParams> ParseFileIdentifierModuleParams(Poco::Dynamic::Var params);
+
+} // namespace aos::iam::config
 
 #endif

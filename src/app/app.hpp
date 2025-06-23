@@ -10,19 +10,22 @@
 
 #include <Poco/Util/ServerApplication.h>
 
-#include <aos/common/crypto/mbedtls/cryptoprovider.hpp>
+#include <aos/common/crypto/cryptoprovider.hpp>
 #include <aos/iam/certmodules/pkcs11/pkcs11.hpp>
 #include <aos/iam/certprovider.hpp>
 #include <aos/iam/nodemanager.hpp>
 #include <aos/iam/permhandler.hpp>
 #include <aos/iam/provisionmanager.hpp>
 #include <logger/logger.hpp>
+#include <utils/cleanupmanager.hpp>
 
 #include "database/database.hpp"
 #include "iamclient/iamclient.hpp"
 #include "iamserver/iamserver.hpp"
 #include "nodeinfoprovider/nodeinfoprovider.hpp"
 #include "visidentifier/visidentifier.hpp"
+
+namespace aos::iam::app {
 
 /**
  * Aos IAM application.
@@ -47,29 +50,34 @@ private:
     void HandleLogLevel(const std::string& name, const std::string& value);
     void HandleConfigFile(const std::string& name, const std::string& value);
 
-    aos::Error InitCertModules(const Config& config);
+    void  Init();
+    void  Start();
+    void  Stop();
+    Error InitCertModules(const config::Config& config);
+    Error InitIdentifierModule(const config::IdentifierConfig& config);
 
-    aos::crypto::MbedTLSCryptoProvider mCryptoProvider;
-    aos::crypto::CertLoader            mCertLoader;
-    aos::iam::certhandler::CertHandler mCertHandler;
-    aos::pkcs11::PKCS11Manager         mPKCS11Manager;
-    std::vector<
-        std::pair<std::unique_ptr<aos::iam::certhandler::HSMItf>, std::unique_ptr<aos::iam::certhandler::CertModule>>>
-                                                             mCertModules;
-    Database                                                 mDatabase;
-    NodeInfoProvider                                         mNodeInfoProvider;
-    aos::iam::nodemanager::NodeManager                       mNodeManager;
-    aos::iam::certprovider::CertProvider                     mCertProvider;
-    aos::iam::provisionmanager::ProvisionManager             mProvisionManager;
-    IAMServer                                                mIAMServer;
-    aos::common::logger::Logger                              mLogger;
-    std::unique_ptr<aos::iam::permhandler::PermHandler>      mPermHandler;
-    std::unique_ptr<IAMClient>                               mIAMClient;
-    std::unique_ptr<aos::iam::identhandler::IdentHandlerItf> mIdentifier;
+    crypto::DefaultCryptoProvider mCryptoProvider;
+    crypto::CertLoader            mCertLoader;
+    certhandler::CertHandler      mCertHandler;
+    pkcs11::PKCS11Manager         mPKCS11Manager;
+    std::vector<std::pair<std::unique_ptr<certhandler::HSMItf>, std::unique_ptr<certhandler::CertModule>>> mCertModules;
+    database::Database                                                                                     mDatabase;
+    nodeinfoprovider::NodeInfoProvider             mNodeInfoProvider;
+    nodemanager::NodeManager                       mNodeManager;
+    certprovider::CertProvider                     mCertProvider;
+    provisionmanager::ProvisionManager             mProvisionManager;
+    iamserver::IAMServer                           mIAMServer;
+    common::logger::Logger                         mLogger;
+    std::unique_ptr<permhandler::PermHandler>      mPermHandler;
+    std::unique_ptr<iamclient::IAMClient>          mIAMClient;
+    std::unique_ptr<identhandler::IdentHandlerItf> mIdentifier;
+    aos::common::utils::CleanupManager             mCleanupManager;
 
     bool        mStopProcessing = false;
     bool        mProvisioning   = false;
     std::string mConfigFile;
 };
+
+} // namespace aos::iam::app
 
 #endif

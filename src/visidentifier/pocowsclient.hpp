@@ -25,6 +25,8 @@
 #include "wsclientevent.hpp"
 #include "wspendingrequests.hpp"
 
+namespace aos::iam::visidentifier {
+
 /**
  * Poco web socket client.
  */
@@ -36,7 +38,7 @@ public:
      * @param config VIS config.
      * @param handler handler functor.
      */
-    PocoWSClient(const VISIdentifierModuleParams& config, MessageHandlerFunc handler);
+    PocoWSClient(const aos::iam::config::VISIdentifierModuleParams& config, MessageHandlerFunc handler);
 
     /**
      * Connects to Web Socket server.
@@ -89,15 +91,15 @@ public:
     ~PocoWSClient() override;
 
 private:
-    static constexpr std::chrono::seconds cDefaultTimeout = std::chrono::seconds(120);
+    static constexpr Duration cDefaultTimeout = 120 * Time::cSeconds;
 
-    void                 HandleResponse(const std::string& frame);
-    void                 ReceiveFrames() noexcept;
-    void                 StartReceiveFramesThread();
-    void                 StopReceiveFramesThread();
-    std::chrono::seconds GetWebSocketTimeout();
+    void     HandleResponse(const std::string& frame);
+    void     ReceiveFrames() noexcept;
+    void     StartReceiveFramesThread();
+    void     StopReceiveFramesThread();
+    Duration GetWebSocketTimeout();
 
-    VISIdentifierModuleParams                      mConfig;
+    aos::iam::config::VISIdentifierModuleParams    mConfig;
     std::recursive_mutex                           mMutex;
     std::thread                                    mReceivedFramesThread;
     std::unique_ptr<Poco::Net::HTTPSClientSession> mClientSession;
@@ -109,5 +111,7 @@ private:
     MessageHandlerFunc                             mHandleSubscription;
     WSClientEvent                                  mWSClientErrorEvent;
 };
+
+} // namespace aos::iam::visidentifier
 
 #endif

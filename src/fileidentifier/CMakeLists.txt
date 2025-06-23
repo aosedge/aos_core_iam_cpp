@@ -1,17 +1,16 @@
 #
-# Copyright (C) 2024 Renesas Electronics Corporation.
-# Copyright (C) 2024 EPAM Systems, Inc.
+# Copyright (C) 2025 EPAM Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
-set(TARGET app)
+set(TARGET fileidentifier)
 
 # ######################################################################################################################
 # Sources
 # ######################################################################################################################
 
-set(SOURCES app.cpp)
+set(SOURCES fileidentifier.cpp)
 
 # ######################################################################################################################
 # Target
@@ -27,7 +26,7 @@ add_library(${TARGET} STATIC ${SOURCES})
 # Compiler flags
 # ######################################################################################################################
 
-add_definitions(-DLOG_MODULE="app")
+add_definitions(-DLOG_MODULE="fileidentifier")
 target_compile_options(${TARGET} PRIVATE -Wstack-usage=${AOS_STACK_USAGE})
 
 # ######################################################################################################################
@@ -36,12 +35,6 @@ target_compile_options(${TARGET} PRIVATE -Wstack-usage=${AOS_STACK_USAGE})
 
 target_link_libraries(
     ${TARGET}
-    PUBLIC config
-           database
-           fileidentifier
-           iamclient
-           iamserver
-           nodeinfoprovider
-           visidentifier
-           aoslogger
+    PUBLIC aosutils aoscommon aosiam Poco::Foundation
+    PRIVATE config
 )

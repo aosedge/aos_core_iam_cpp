@@ -9,6 +9,8 @@
 
 #include "wspendingrequests.hpp"
 
+namespace aos::iam::visidentifier {
+
 /***********************************************************************************************************************
  * RequestParams
  **********************************************************************************************************************/
@@ -33,11 +35,9 @@ const std::string& RequestParams::GetRequestId() const
     return mRequestId;
 }
 
-bool RequestParams::TryWaitForResponse(std::string& result, const aos::common::utils::Duration timeout)
+bool RequestParams::TryWaitForResponse(std::string& result, const Duration timeout)
 {
-    using namespace std::chrono;
-
-    if (mEvent.tryWait(duration_cast<milliseconds>(timeout).count())) {
+    if (mEvent.tryWait(timeout.Milliseconds())) {
         result = mResponse;
 
         return true;
@@ -88,3 +88,5 @@ bool PendingRequests::SetResponse(const std::string& requestId, const std::strin
 
     return true;
 }
+
+} // namespace aos::iam::visidentifier

@@ -12,6 +12,8 @@
 
 #include "vismessage.hpp"
 
+namespace aos::iam::visidentifier {
+
 /***********************************************************************************************************************
  * Public
  **********************************************************************************************************************/
@@ -41,13 +43,13 @@ VISMessage::VISMessage(const std::string& jsonStr)
         aos::Error         err;
 
         aos::Tie(objectVar, err) = aos::common::utils::ParseJson(jsonStr);
-        AOS_ERROR_CHECK_AND_THROW("can't parse as json", err);
+        AOS_ERROR_CHECK_AND_THROW(err, "can't parse as json");
 
         mJsonObject = std::move(*objectVar.extract<JsonObject::Ptr>());
 
         mAction.FromString(mJsonObject.getValue<std::string>(cActionTagName).c_str());
     } catch (const Poco::Exception& e) {
-        throw aos::common::utils::AosException(e.message(), AOS_ERROR_WRAP(aos::ErrorEnum::eFailed));
+        AOS_ERROR_THROW(AOS_ERROR_WRAP(aos::ErrorEnum::eFailed), e.message());
     }
 }
 
@@ -75,3 +77,5 @@ std::vector<uint8_t> VISMessage::ToByteArray() const
 
     return {str.cbegin(), str.cend()};
 }
+
+} // namespace aos::iam::visidentifier

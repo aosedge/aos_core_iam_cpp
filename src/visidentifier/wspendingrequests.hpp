@@ -16,6 +16,8 @@
 
 #include <utils/time.hpp>
 
+namespace aos::iam::visidentifier {
+
 /**
  * Request Params.
  */
@@ -50,7 +52,7 @@ public:
      *
      * @return bool - true if response was set within specified timeout.
      */
-    bool TryWaitForResponse(std::string& result, const aos::common::utils::Duration timeout);
+    bool TryWaitForResponse(std::string& result, const Duration timeout);
 
     /**
      * Compares request params.
@@ -99,5 +101,7 @@ private:
     std::mutex                    mMutex;
     std::vector<RequestParamsPtr> mRequests;
 };
+
+} // namespace aos::iam::visidentifier
 
 #endif

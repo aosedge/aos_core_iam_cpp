@@ -16,7 +16,7 @@
 #include <aos/test/log.hpp>
 #include <aos/test/softhsmenv.hpp>
 
-#include <aos/common/crypto/mbedtls/cryptoprovider.hpp>
+#include <aos/common/crypto/cryptoprovider.hpp>
 #include <aos/iam/certhandler.hpp>
 #include <aos/iam/certmodules/pkcs11/pkcs11.hpp>
 #include <utils/grpchelper.hpp>
@@ -34,6 +34,8 @@
 
 using namespace testing;
 
+namespace aos::iam::iamserver {
+
 /***********************************************************************************************************************
  * Suite
  **********************************************************************************************************************/
@@ -49,15 +51,14 @@ protected:
     static constexpr auto cProvisioningModeOn  = true;
     static constexpr auto cProvisioningModeOff = false;
 
-    void RegisterPKCS11Module(const aos::String& name, aos::crypto::KeyType keyType = aos::crypto::KeyTypeEnum::eRSA);
+    void RegisterPKCS11Module(const String& name, crypto::KeyType keyType = crypto::KeyTypeEnum::eRSA);
     void SetUpCertificates();
 
     template <typename T>
     std::unique_ptr<typename T::Stub> CreateCustomStub(const std::string& url, const bool insecure = false)
     {
-        auto tlsChannelCreds = insecure
-            ? grpc::InsecureChannelCredentials()
-            : aos::common::utils::GetTLSClientCredentials(GetClientConfig().mCACert.c_str());
+        auto tlsChannelCreds = insecure ? grpc::InsecureChannelCredentials()
+                                        : common::utils::GetTLSClientCredentials(GetClientConfig().mCACert.c_str());
         if (tlsChannelCreds == nullptr) {
             return nullptr;
         }
@@ -70,46 +71,49 @@ protected:
         return T::NewStub(channel);
     }
 
-    IAMServer                       mServer;
-    aos::iam::certhandler::CertInfo mClientInfo;
-    aos::iam::certhandler::CertInfo mServerInfo;
-    Config                          mServerConfig;
-    Config                          mClientConfig;
+    IAMServer               mServer;
+    certhandler::CertInfo   mClientInfo;
+    certhandler::CertInfo   mServerInfo;
+    config::IAMServerConfig mServerConfig;
+    config::IAMClientConfig mClientConfig;
 
-    aos::iam::certhandler::CertHandler mCertHandler;
-    aos::crypto::MbedTLSCryptoProvider mCryptoProvider;
-    aos::crypto::CertLoader            mCertLoader;
+    certhandler::CertHandler      mCertHandler;
+    crypto::DefaultCryptoProvider mCryptoProvider;
+    crypto::CertLoader            mCertLoader;
 
     // mocks
-    aos::iam::identhandler::IdentHandlerMock         mIdentHandler;
-    aos::iam::permhandler::PermHandlerMock           mPermHandler;
-    aos::iam::nodeinfoprovider::NodeInfoProviderMock mNodeInfoProvider;
-    aos::iam::nodemanager::NodeManagerMock           mNodeManager;
-    aos::iam::certprovider::CertProviderMock         mCertProvider;
-    aos::iam::provisionmanager::ProvisionManagerMock mProvisionManager;
+    identhandler::IdentHandlerMock         mIdentHandler;
+    permhandler::PermHandlerMock           mPermHandler;
+    nodeinfoprovider::NodeInfoProviderMock mNodeInfoProvider;
+    nodemanager::NodeManagerMock           mNodeManager;
+    certprovider::CertProviderMock         mCertProvider;
+    provisionmanager::ProvisionManagerMock mProvisionManager;
+
+protected:
+    static aos::NodeInfo GetNodeInfo();
 
 private:
     void SetUp() override;
     void TearDown() override;
 
     // CertHandler function
-    aos::iam::certhandler::ModuleConfig       GetCertModuleConfig(aos::crypto::KeyType keyType);
-    aos::iam::certhandler::PKCS11ModuleConfig GetPKCS11ModuleConfig();
-    void ApplyCertificate(const aos::String& certType, const aos::String& subject, const aos::String& intermKeyPath,
-        const aos::String& intermCertPath, uint64_t serial, aos::iam::certhandler::CertInfo& certInfo);
+    certhandler::ModuleConfig       GetCertModuleConfig(crypto::KeyType keyType);
+    certhandler::PKCS11ModuleConfig GetPKCS11ModuleConfig();
+    void ApplyCertificate(const String& certType, const String& subject, const String& intermKeyPath,
+        const String& intermCertPath, uint64_t serial, certhandler::CertInfo& certInfo);
 
-    Config GetServerConfig();
-    Config GetClientConfig();
+    config::IAMServerConfig GetServerConfig();
+    config::IAMClientConfig GetClientConfig();
 
-    aos::test::SoftHSMEnv                                                   mSOFTHSMEnv;
-    aos::iam::certhandler::StorageStub                                      mStorage;
-    aos::StaticArray<aos::iam::certhandler::PKCS11Module, cMaxModulesCount> mPKCS11Modules;
-    aos::StaticArray<aos::iam::certhandler::CertModule, cMaxModulesCount>   mCertModules;
+    test::SoftHSMEnv                                         mSOFTHSMEnv;
+    certhandler::StorageStub                                 mStorage;
+    StaticArray<certhandler::PKCS11Module, cMaxModulesCount> mPKCS11Modules;
+    StaticArray<certhandler::CertModule, cMaxModulesCount>   mCertModules;
 };
 
 void IAMServerTest::SetUp()
 {
-    aos::test::InitLog();
+    test::InitLog();
 
     ASSERT_TRUE(mCryptoProvider.Init().IsNone());
     ASSERT_TRUE(mSOFTHSMEnv
@@ -131,16 +135,14 @@ void IAMServerTest::SetUp()
     mServerConfig = GetServerConfig();
     mClientConfig = GetClientConfig();
 
-    EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillRepeatedly(Invoke([&](aos::NodeInfo& nodeInfo) {
+    EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillRepeatedly(Invoke([&](NodeInfo& nodeInfo) {
         nodeInfo.mNodeID   = "node0";
-        nodeInfo.mNodeType = mServerConfig.mNodeInfo.mNodeType.c_str();
-
-        nodeInfo.mNodeType = mServerConfig.mNodeInfo.mNodeType.c_str();
+        nodeInfo.mNodeType = GetNodeInfo().mNodeType;
         nodeInfo.mAttrs.PushBack({"MainNode", ""});
 
         LOG_DBG() << "NodeInfoProvider::GetNodeInfo: " << nodeInfo.mNodeID.CStr() << ", " << nodeInfo.mNodeType.CStr();
 
-        return aos::ErrorEnum::eNone;
+        return ErrorEnum::eNone;
     }));
 }
 
@@ -151,10 +153,10 @@ void IAMServerTest::TearDown()
         ENGINE_get_finish_function(engine)(engine);
     }
 
-    aos::FS::ClearDir(SOFTHSM_BASE_IAM_DIR "/tokens");
+    fs::ClearDir(SOFTHSM_BASE_IAM_DIR "/tokens");
 }
 
-void IAMServerTest::RegisterPKCS11Module(const aos::String& name, aos::crypto::KeyType keyType)
+void IAMServerTest::RegisterPKCS11Module(const String& name, crypto::KeyType keyType)
 {
     ASSERT_TRUE(mPKCS11Modules.EmplaceBack().IsNone());
     ASSERT_TRUE(mCertModules.EmplaceBack().IsNone());
@@ -165,42 +167,48 @@ void IAMServerTest::RegisterPKCS11Module(const aos::String& name, aos::crypto::K
     ASSERT_TRUE(mCertHandler.RegisterModule(certModule).IsNone());
 }
 
-Config IAMServerTest::GetServerConfig()
+config::IAMServerConfig IAMServerTest::GetServerConfig()
 {
-    Config config;
+    config::IAMServerConfig config;
 
     config.mCertStorage               = "server";
     config.mCACert                    = CERTIFICATES_IAM_DIR "/ca.cer";
     config.mIAMPublicServerURL        = "localhost:8088";
     config.mIAMProtectedServerURL     = "localhost:8089";
-    config.mNodeInfo.mNodeIDPath      = "nodeid";
-    config.mNodeInfo.mNodeType        = "iam-node-type";
     config.mFinishProvisioningCmdArgs = config.mDiskEncryptionCmdArgs = {};
 
     return config;
 }
 
-Config IAMServerTest::GetClientConfig()
+config::IAMClientConfig IAMServerTest::GetClientConfig()
 {
-    Config config;
+    config::IAMClientConfig config;
 
     config.mCertStorage               = "client";
     config.mCACert                    = CERTIFICATES_IAM_DIR "/ca.cer";
-    config.mIAMPublicServerURL        = "localhost:8088";
-    config.mIAMProtectedServerURL     = "localhost:8089";
-    config.mNodeInfo.mNodeType        = "iam-node-type";
+    config.mMainIAMPublicServerURL    = "localhost:8088";
+    config.mMainIAMProtectedServerURL = "localhost:8089";
     config.mFinishProvisioningCmdArgs = config.mDiskEncryptionCmdArgs = {};
 
     return config;
 }
 
-aos::iam::certhandler::ModuleConfig IAMServerTest::GetCertModuleConfig(aos::crypto::KeyType keyType)
+NodeInfo IAMServerTest::GetNodeInfo()
 {
-    aos::iam::certhandler::ModuleConfig config;
+    NodeInfo nodeInfo;
+
+    nodeInfo.mNodeType = "iam-node-type";
+
+    return nodeInfo;
+}
+
+certhandler::ModuleConfig IAMServerTest::GetCertModuleConfig(crypto::KeyType keyType)
+{
+    certhandler::ModuleConfig config;
 
     config.mKeyType         = keyType;
     config.mMaxCertificates = 2;
-    config.mExtendedKeyUsage.EmplaceBack(aos::iam::certhandler::ExtendedKeyUsageEnum::eClientAuth);
+    config.mExtendedKeyUsage.EmplaceBack(certhandler::ExtendedKeyUsageEnum::eClientAuth);
     config.mAlternativeNames.EmplaceBack("epam.com");
     config.mAlternativeNames.EmplaceBack("www.epam.com");
     config.mSkipValidation = false;
@@ -208,9 +216,9 @@ aos::iam::certhandler::ModuleConfig IAMServerTest::GetCertModuleConfig(aos::cryp
     return config;
 }
 
-aos::iam::certhandler::PKCS11ModuleConfig IAMServerTest::GetPKCS11ModuleConfig()
+certhandler::PKCS11ModuleConfig IAMServerTest::GetPKCS11ModuleConfig()
 {
-    aos::iam::certhandler::PKCS11ModuleConfig config;
+    certhandler::PKCS11ModuleConfig config;
 
     config.mLibrary         = SOFTHSM2_LIB;
     config.mSlotID          = mSOFTHSMEnv.GetSlotID();
@@ -220,22 +228,21 @@ aos::iam::certhandler::PKCS11ModuleConfig IAMServerTest::GetPKCS11ModuleConfig()
     return config;
 }
 
-void IAMServerTest::ApplyCertificate(const aos::String& certType, const aos::String& subject,
-    const aos::String& intermKeyPath, const aos::String& intermCertPath, uint64_t serial,
-    aos::iam::certhandler::CertInfo& certInfo)
+void IAMServerTest::ApplyCertificate(const String& certType, const String& subject, const String& intermKeyPath,
+    const String& intermCertPath, uint64_t serial, certhandler::CertInfo& certInfo)
 {
-    aos::StaticString<aos::crypto::cCSRPEMLen> csr;
+    StaticString<crypto::cCSRPEMLen> csr;
     ASSERT_TRUE(mCertHandler.CreateKey(certType, subject, cPIN, csr).IsNone());
 
     // create certificate from CSR, CA priv key, CA cert
-    aos::StaticString<aos::crypto::cPrivKeyPEMLen> intermKey;
-    ASSERT_TRUE(aos::FS::ReadFileToString(intermKeyPath, intermKey).IsNone());
+    StaticString<crypto::cPrivKeyPEMLen> intermKey;
+    ASSERT_TRUE(fs::ReadFileToString(intermKeyPath, intermKey).IsNone());
 
-    aos::StaticString<aos::crypto::cCertPEMLen> intermCert;
-    ASSERT_TRUE(aos::FS::ReadFileToString(intermCertPath, intermCert).IsNone());
+    StaticString<crypto::cCertPEMLen> intermCert;
+    ASSERT_TRUE(fs::ReadFileToString(intermCertPath, intermCert).IsNone());
 
-    auto serialArr = aos::Array<uint8_t>(reinterpret_cast<uint8_t*>(&serial), sizeof(serial));
-    aos::StaticString<aos::crypto::cCertPEMLen> clientCertChain;
+    auto                              serialArr = Array<uint8_t>(reinterpret_cast<uint8_t*>(&serial), sizeof(serial));
+    StaticString<crypto::cCertPEMLen> clientCertChain;
 
     ASSERT_TRUE(mCryptoProvider.CreateClientCert(csr, intermKey, intermCert, serialArr, clientCertChain).IsNone());
 
@@ -243,9 +250,9 @@ void IAMServerTest::ApplyCertificate(const aos::String& certType, const aos::Str
     clientCertChain.Append(intermCert);
 
     // add CA certificate to the chain
-    aos::StaticString<aos::crypto::cCertPEMLen> caCert;
+    StaticString<crypto::cCertPEMLen> caCert;
 
-    ASSERT_TRUE(aos::FS::ReadFileToString(CERTIFICATES_IAM_DIR "/ca.cer", caCert).IsNone());
+    ASSERT_TRUE(fs::ReadFileToString(CERTIFICATES_IAM_DIR "/ca.cer", caCert).IsNone());
     clientCertChain.Append(caCert);
 
     // apply client certificate
@@ -260,12 +267,12 @@ void IAMServerTest::ApplyCertificate(const aos::String& certType, const aos::Str
 TEST_F(IAMServerTest, InitFailsOnHandlersInit)
 {
     // public message handler initialization fails
-    EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillOnce(Return(aos::ErrorEnum::eFailed));
+    EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillOnce(Return(ErrorEnum::eFailed));
     EXPECT_CALL(mNodeManager, SetNodeInfo).Times(0);
 
     auto err = mServer.Init(mServerConfig, mCertHandler, mIdentHandler, mPermHandler, mCertLoader, mCryptoProvider,
         mNodeInfoProvider, mNodeManager, mCertProvider, mProvisionManager, cProvisioningModeOn);
-    EXPECT_TRUE(err.Is(aos::ErrorEnum::eFailed)) << err.Message();
+    EXPECT_TRUE(err.Is(ErrorEnum::eFailed)) << err.Message();
 }
 
 TEST_F(IAMServerTest, InitWithInsecureChannelsSucceeds)
@@ -273,6 +280,9 @@ TEST_F(IAMServerTest, InitWithInsecureChannelsSucceeds)
     auto err = mServer.Init(mServerConfig, mCertHandler, mIdentHandler, mPermHandler, mCertLoader, mCryptoProvider,
         mNodeInfoProvider, mNodeManager, mCertProvider, mProvisionManager, cProvisioningModeOn);
     ASSERT_TRUE(err.IsNone()) << err.Message();
+
+    ASSERT_TRUE(mServer.Start().IsNone());
+    ASSERT_TRUE(mServer.Stop().IsNone());
 }
 
 TEST_F(IAMServerTest, InitWithSecureChannelsSucceeds)
@@ -280,6 +290,9 @@ TEST_F(IAMServerTest, InitWithSecureChannelsSucceeds)
     auto err = mServer.Init(mServerConfig, mCertHandler, mIdentHandler, mPermHandler, mCertLoader, mCryptoProvider,
         mNodeInfoProvider, mNodeManager, mCertProvider, mProvisionManager, cProvisioningModeOff);
     ASSERT_TRUE(err.IsNone()) << err.Message();
+
+    ASSERT_TRUE(mServer.Start().IsNone());
+    ASSERT_TRUE(mServer.Stop().IsNone());
 }
 
 TEST_F(IAMServerTest, InitWithSecureChannelsFails)
@@ -297,25 +310,28 @@ TEST_F(IAMServerTest, OnNodeInfoChange)
         mNodeInfoProvider, mNodeManager, mCertProvider, mProvisionManager, cProvisioningModeOn);
 
     ASSERT_TRUE(err.IsNone()) << err.Message();
+    ASSERT_TRUE(mServer.Start().IsNone());
 
-    aos::NodeInfo nodeInfo;
+    NodeInfo nodeInfo;
 
     ASSERT_NO_THROW(mServer.OnNodeInfoChange(nodeInfo));
+    ASSERT_TRUE(mServer.Stop().IsNone());
 }
 
 TEST_F(IAMServerTest, PublicIdentityServiceIsNotImplementedOnSecondaryNode)
 {
-    EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillRepeatedly(Invoke([&](aos::NodeInfo& nodeInfo) {
+    EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillRepeatedly(Invoke([&](NodeInfo& nodeInfo) {
         nodeInfo.mNodeID   = "node0";
-        nodeInfo.mNodeType = mServerConfig.mNodeInfo.mNodeType.c_str();
+        nodeInfo.mNodeType = GetNodeInfo().mNodeType;
 
-        return aos::ErrorEnum::eNone;
+        return ErrorEnum::eNone;
     }));
 
     auto err = mServer.Init(mServerConfig, mCertHandler, mIdentHandler, mPermHandler, mCertLoader, mCryptoProvider,
         mNodeInfoProvider, mNodeManager, mCertProvider, mProvisionManager, cProvisioningModeOn);
 
     ASSERT_TRUE(err.IsNone()) << err.Message();
+    ASSERT_TRUE(mServer.Start().IsNone());
 
     auto stub = CreateCustomStub<iamproto::IAMPublicIdentityService>(
         mServerConfig.mIAMProtectedServerURL, cProvisioningModeOn);
@@ -330,21 +346,24 @@ TEST_F(IAMServerTest, PublicIdentityServiceIsNotImplementedOnSecondaryNode)
     EXPECT_EQ(status.error_code(), grpc::StatusCode::UNIMPLEMENTED)
         << "IAMPublicIdentityService must be unimplemented: code = " << status.error_code()
         << ", message = " << status.error_message();
+
+    ASSERT_TRUE(mServer.Stop().IsNone());
 }
 
 TEST_F(IAMServerTest, PublicNodesServiceIsNotImplementedOnSecondaryNode)
 {
-    EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillRepeatedly(Invoke([&](aos::NodeInfo& nodeInfo) {
+    EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillRepeatedly(Invoke([&](NodeInfo& nodeInfo) {
         nodeInfo.mNodeID   = "node0";
-        nodeInfo.mNodeType = mServerConfig.mNodeInfo.mNodeType.c_str();
+        nodeInfo.mNodeType = GetNodeInfo().mNodeType;
 
-        return aos::ErrorEnum::eNone;
+        return ErrorEnum::eNone;
     }));
 
     auto err = mServer.Init(mServerConfig, mCertHandler, mIdentHandler, mPermHandler, mCertLoader, mCryptoProvider,
         mNodeInfoProvider, mNodeManager, mCertProvider, mProvisionManager, cProvisioningModeOn);
 
     ASSERT_TRUE(err.IsNone()) << err.Message();
+    ASSERT_TRUE(mServer.Start().IsNone());
 
     auto stub
         = CreateCustomStub<iamproto::IAMPublicNodesService>(mServerConfig.mIAMProtectedServerURL, cProvisioningModeOn);
@@ -359,22 +378,24 @@ TEST_F(IAMServerTest, PublicNodesServiceIsNotImplementedOnSecondaryNode)
     EXPECT_EQ(status.error_code(), grpc::StatusCode::UNIMPLEMENTED)
         << "IAMPublicNodesService must be unimplemented: code = " << status.error_code()
         << ", message = " << status.error_message();
+
+    ASSERT_TRUE(mServer.Stop().IsNone());
 }
 
 TEST_F(IAMServerTest, CertificateServiceIsNotImplementedOnSecondaryNode)
 {
-    EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillRepeatedly(Invoke([&](aos::NodeInfo& nodeInfo) {
+    EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillRepeatedly(Invoke([&](NodeInfo& nodeInfo) {
         nodeInfo.mNodeID   = "node0";
-        nodeInfo.mNodeType = mServerConfig.mNodeInfo.mNodeType.c_str();
+        nodeInfo.mNodeType = GetNodeInfo().mNodeType;
 
-        return aos::ErrorEnum::eNone;
+        return ErrorEnum::eNone;
     }));
 
     auto err = mServer.Init(mServerConfig, mCertHandler, mIdentHandler, mPermHandler, mCertLoader, mCryptoProvider,
         mNodeInfoProvider, mNodeManager, mCertProvider, mProvisionManager, cProvisioningModeOn);
 
     ASSERT_TRUE(err.IsNone()) << err.Message();
-
+    ASSERT_TRUE(mServer.Start().IsNone());
     auto stub
         = CreateCustomStub<iamproto::IAMCertificateService>(mServerConfig.mIAMProtectedServerURL, cProvisioningModeOn);
 
@@ -389,21 +410,24 @@ TEST_F(IAMServerTest, CertificateServiceIsNotImplementedOnSecondaryNode)
     EXPECT_EQ(status.error_code(), grpc::StatusCode::UNIMPLEMENTED)
         << "IAMCertificateService must be unimplemented: code = " << status.error_code()
         << ", message = " << status.error_message();
+
+    ASSERT_TRUE(mServer.Stop().IsNone());
 }
 
 TEST_F(IAMServerTest, ProvisioningServiceIsNotImplementedOnSecondaryNode)
 {
-    EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillRepeatedly(Invoke([&](aos::NodeInfo& nodeInfo) {
+    EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillRepeatedly(Invoke([&](NodeInfo& nodeInfo) {
         nodeInfo.mNodeID   = "node0";
-        nodeInfo.mNodeType = mServerConfig.mNodeInfo.mNodeType.c_str();
+        nodeInfo.mNodeType = GetNodeInfo().mNodeType;
 
-        return aos::ErrorEnum::eNone;
+        return ErrorEnum::eNone;
     }));
 
     auto err = mServer.Init(mServerConfig, mCertHandler, mIdentHandler, mPermHandler, mCertLoader, mCryptoProvider,
         mNodeInfoProvider, mNodeManager, mCertProvider, mProvisionManager, cProvisioningModeOn);
 
     ASSERT_TRUE(err.IsNone()) << err.Message();
+    ASSERT_TRUE(mServer.Start().IsNone());
 
     auto stub
         = CreateCustomStub<iamproto::IAMProvisioningService>(mServerConfig.mIAMProtectedServerURL, cProvisioningModeOn);
@@ -419,21 +443,24 @@ TEST_F(IAMServerTest, ProvisioningServiceIsNotImplementedOnSecondaryNode)
     EXPECT_EQ(status.error_code(), grpc::StatusCode::UNIMPLEMENTED)
         << "IAMProvisioningService must be unimplemented: code = " << status.error_code()
         << ", message = " << status.error_message();
+
+    ASSERT_TRUE(mServer.Stop().IsNone());
 }
 
 TEST_F(IAMServerTest, NodesServiceIsNotImplementedOnSecondaryNode)
 {
-    EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillRepeatedly(Invoke([&](aos::NodeInfo& nodeInfo) {
+    EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillRepeatedly(Invoke([&](NodeInfo& nodeInfo) {
         nodeInfo.mNodeID   = "node0";
-        nodeInfo.mNodeType = mServerConfig.mNodeInfo.mNodeType.c_str();
+        nodeInfo.mNodeType = GetNodeInfo().mNodeType;
 
-        return aos::ErrorEnum::eNone;
+        return ErrorEnum::eNone;
     }));
 
     auto err = mServer.Init(mServerConfig, mCertHandler, mIdentHandler, mPermHandler, mCertLoader, mCryptoProvider,
         mNodeInfoProvider, mNodeManager, mCertProvider, mProvisionManager, cProvisioningModeOn);
 
     ASSERT_TRUE(err.IsNone()) << err.Message();
+    ASSERT_TRUE(mServer.Start().IsNone());
 
     auto stub = CreateCustomStub<iamproto::IAMNodesService>(mServerConfig.mIAMProtectedServerURL, cProvisioningModeOn);
 
@@ -448,4 +475,8 @@ TEST_F(IAMServerTest, NodesServiceIsNotImplementedOnSecondaryNode)
     EXPECT_EQ(status.error_code(), grpc::StatusCode::UNIMPLEMENTED)
         << "IAMNodesService must be unimplemented: code = " << status.error_code()
         << ", message = " << status.error_message();
+
+    ASSERT_TRUE(mServer.Stop().IsNone());
 }
+
+} // namespace aos::iam::iamserver

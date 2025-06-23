@@ -18,20 +18,27 @@
 #include "vismessage.hpp"
 #include "wsexception.hpp"
 
+namespace aos::iam::visidentifier {
+
+namespace {
+
 /***********************************************************************************************************************
  * Statics
  **********************************************************************************************************************/
+
 template <class F>
-static auto OnScopeExit(F&& f)
+auto OnScopeExit(F&& f)
 {
     return std::unique_ptr<void, typename std::decay<F>::type>(reinterpret_cast<void*>(1), std::forward<F>(f));
 }
+
+} // namespace
 
 /***********************************************************************************************************************
  * Public
  **********************************************************************************************************************/
 
-PocoWSClient::PocoWSClient(const VISIdentifierModuleParams& config, MessageHandlerFunc handler)
+PocoWSClient::PocoWSClient(const aos::iam::config::VISIdentifierModuleParams& config, MessageHandlerFunc handler)
     : mConfig(config)
     , mHandleSubscription(std::move(handler))
 {
@@ -53,7 +60,7 @@ void PocoWSClient::Connect()
         StopReceiveFramesThread();
 
         Poco::Net::Context::Ptr context = new Poco::Net::Context(
-            Poco::Net::Context::TLS_CLIENT_USE, "", mConfig.mCaCertFile, "", Poco::Net::Context::VERIFY_NONE, 9);
+            Poco::Net::Context::TLS_CLIENT_USE, "", "", mConfig.mCaCertFile, Poco::Net::Context::VERIFY_RELAXED, 9);
 
         // HTTPSClientSession is not copyable or movable.
         mClientSession = std::make_unique<Poco::Net::HTTPSClientSession>(uri.getHost(), uri.getPort(), context);
@@ -161,9 +168,7 @@ void PocoWSClient::AsyncSendMessage(const ByteArray& message)
     }
 
     try {
-        using namespace std::chrono;
-
-        mWebSocket->setSendTimeout(duration_cast<microseconds>(GetWebSocketTimeout()).count());
+        mWebSocket->setSendTimeout(GetWebSocketTimeout().Microseconds());
 
         const int len = mWebSocket->sendFrame(&message.front(), message.size(), Poco::Net::WebSocket::FRAME_TEXT);
 
@@ -192,16 +197,16 @@ void PocoWSClient::HandleResponse(const std::string& frame)
         aos::Error         err;
 
         aos::Tie(objectVar, err) = aos::common::utils::ParseJson(frame);
-        AOS_ERROR_CHECK_AND_THROW("can't parse as json", err);
+        AOS_ERROR_CHECK_AND_THROW(err, "can't parse as json");
 
         const auto object = objectVar.extract<Poco::JSON::Object::Ptr>();
 
         if (object.isNull()) {
-            throw aos::common::utils::AosException("can't extract json object");
+            AOS_ERROR_THROW(ErrorEnum::eInvalidArgument, "can't extract json object");
         }
 
         if (!object->has(VISMessage::cActionTagName)) {
-            throw aos::common::utils::AosException("action tag is missing");
+            AOS_ERROR_THROW(ErrorEnum::eInvalidArgument, "action tag is missing");
         }
 
         if (const auto action = object->get(VISMessage::cActionTagName); action == "subscription") {
@@ -212,7 +217,7 @@ void PocoWSClient::HandleResponse(const std::string& frame)
 
         const auto requestId = object->get(VISMessage::cRequestIdTagName).convert<std::string>();
         if (requestId.empty()) {
-            throw aos::common::utils::AosException("requestId tag is empty");
+            AOS_ERROR_THROW(ErrorEnum::eInvalidArgument, "requestId tag is empty");
         }
 
         if (!mPendingRequests.SetResponse(requestId, frame)) {
@@ -281,11 +286,13 @@ void PocoWSClient::StopReceiveFramesThread()
     }
 }
 
-std::chrono::seconds PocoWSClient::GetWebSocketTimeout()
+Duration PocoWSClient::GetWebSocketTimeout()
 {
     if (mConfig.mWebSocketTimeout > 0) {
-        return std::chrono::seconds(mConfig.mWebSocketTimeout);
+        return mConfig.mWebSocketTimeout;
     }
 
     return cDefaultTimeout;
 }
+
+} // namespace aos::iam::visidentifier

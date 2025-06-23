@@ -26,7 +26,6 @@
 #include "iamclient/iamclient.hpp"
 
 using namespace testing;
-using namespace aos;
 
 /***********************************************************************************************************************
  * Test utils
@@ -50,8 +49,12 @@ inline bool operator==(const iamanager::v5::NodeInfo& left, const iamanager::v5:
 
 } // namespace iamanager::v5
 
+namespace aos::iam::iamclient {
+
+namespace {
+
 template <typename T1, typename T2>
-void FillArray(const std::initializer_list<T1>& src, aos::Array<T2>& dst)
+void FillArray(const std::initializer_list<T1>& src, Array<T2>& dst)
 {
     for (const auto& val : src) {
         ASSERT_TRUE(dst.PushBack(val).IsNone());
@@ -78,7 +81,7 @@ std::vector<T> ConvertFromProtoArray(const google::protobuf::RepeatedPtrField<T>
     return dst;
 }
 
-static CPUInfo CreateCPUInfo()
+CPUInfo CreateCPUInfo()
 {
     CPUInfo cpuInfo;
 
@@ -86,12 +89,12 @@ static CPUInfo CreateCPUInfo()
     cpuInfo.mNumCores   = 4;
     cpuInfo.mNumThreads = 4;
     cpuInfo.mArch       = "GenuineIntel";
-    cpuInfo.mArchFamily = "6";
+    cpuInfo.mArchFamily.SetValue("6");
 
     return cpuInfo;
 }
 
-static PartitionInfo CreatePartitionInfo(const char* name, const std::initializer_list<const char*> types)
+PartitionInfo CreatePartitionInfo(const char* name, const std::initializer_list<const char*> types)
 {
     PartitionInfo partitionInfo;
 
@@ -104,7 +107,7 @@ static PartitionInfo CreatePartitionInfo(const char* name, const std::initialize
     return partitionInfo;
 }
 
-static NodeAttribute CreateAttribute(const char* name, const char* value)
+NodeAttribute CreateAttribute(const char* name, const char* value)
 {
     NodeAttribute attribute;
 
@@ -114,7 +117,7 @@ static NodeAttribute CreateAttribute(const char* name, const char* value)
     return attribute;
 }
 
-static NodeInfo DefaultNodeInfo(NodeStatus status = NodeStatusEnum::eProvisioned)
+NodeInfo DefaultNodeInfo(NodeStatus status = NodeStatusEnum::eProvisioned)
 {
     NodeInfo nodeInfo;
 
@@ -132,9 +135,7 @@ static NodeInfo DefaultNodeInfo(NodeStatus status = NodeStatusEnum::eProvisioned
     return nodeInfo;
 }
 
-//
-
-static iamanager::v5::CPUInfo CreateCPUInfoProto()
+iamanager::v5::CPUInfo CreateCPUInfoProto()
 {
     iamanager::v5::CPUInfo cpuInfo;
 
@@ -147,8 +148,7 @@ static iamanager::v5::CPUInfo CreateCPUInfoProto()
     return cpuInfo;
 }
 
-static iamanager::v5::PartitionInfo CreatePartitionInfoProto(
-    const char* name, const std::initializer_list<const char*> types)
+iamanager::v5::PartitionInfo CreatePartitionInfoProto(const char* name, const std::initializer_list<const char*> types)
 {
     iamanager::v5::PartitionInfo partitionInfo;
 
@@ -160,7 +160,7 @@ static iamanager::v5::PartitionInfo CreatePartitionInfoProto(
     return partitionInfo;
 }
 
-static iamanager::v5::NodeAttribute CreateAttributeProto(const char* name, const char* value)
+iamanager::v5::NodeAttribute CreateAttributeProto(const char* name, const char* value)
 {
     iamanager::v5::NodeAttribute attribute;
 
@@ -170,7 +170,7 @@ static iamanager::v5::NodeAttribute CreateAttributeProto(const char* name, const
     return attribute;
 }
 
-static iamanager::v5::NodeInfo DefaultNodeInfoProto(const std::string& status = "provisioned")
+iamanager::v5::NodeInfo DefaultNodeInfoProto(const std::string& status = "provisioned")
 {
     iamanager::v5::NodeInfo nodeInfo;
 
@@ -189,6 +189,8 @@ static iamanager::v5::NodeInfo DefaultNodeInfoProto(const std::string& status = 
 
     return nodeInfo;
 }
+
+} // namespace
 
 /***********************************************************************************************************************
  * Suite
@@ -271,7 +273,7 @@ public:
                 }
             }
         } catch (const std::exception& e) {
-            LOG_ERR() << "Register node failed: err=" << aos::common::utils::ToAosError(e);
+            LOG_ERR() << "Register node failed: err=" << common::utils::ToAosError(e);
         }
 
         LOG_DBG() << "Test server message thread stoped";
@@ -402,7 +404,7 @@ private:
     }
 
     grpc::ServerReaderWriter<iamanager::v5::IAMIncomingMessages, iamanager::v5::IAMOutgoingMessages>* mStream;
-    grpc::ServerContext* mRegisterNodeContext;
+    grpc::ServerContext* mRegisterNodeContext {};
 
     std::mutex              mLock;
     std::condition_variable mNodeInfoCV;
@@ -415,9 +417,9 @@ class IAMClientTest : public Test {
 protected:
     void SetUp() override { test::InitLog(); }
 
-    static Config GetConfig()
+    static config::IAMClientConfig GetConfig()
     {
-        Config config;
+        config::IAMClientConfig config;
 
         config.mMainIAMPublicServerURL    = "localhost:5555";
         config.mMainIAMProtectedServerURL = "localhost:5556";
@@ -429,12 +431,12 @@ protected:
         config.mFinishProvisioningCmdArgs = {"/bin/sh", "-c", "echo 'Hello World'"};
         config.mDeprovisionCmdArgs        = {"/bin/sh", "-c", "echo 'Hello World'"};
 
-        config.mNodeReconnectInterval = std::chrono::seconds(2);
+        config.mNodeReconnectInterval = 2 * Time::cSeconds;
 
         return config;
     }
 
-    std::unique_ptr<IAMClient> CreateClient(bool provisionMode, const Config& config = GetConfig())
+    std::unique_ptr<IAMClient> CreateClient(bool provisionMode, const config::IAMClientConfig& config = GetConfig())
     {
         auto client = std::make_unique<IAMClient>();
 
@@ -452,7 +454,7 @@ protected:
     }
 
     std::pair<std::unique_ptr<TestPublicNodeService>, std::unique_ptr<IAMClient>> InitTest(
-        const NodeStatus& status, const Config& config = GetConfig())
+        const NodeStatus& status, const config::IAMClientConfig& config = GetConfig())
     {
         auto server = CreateServer(config.mMainIAMPublicServerURL);
 
@@ -464,6 +466,7 @@ protected:
         EXPECT_CALL(*server, OnNodeInfo(expNodeInfo));
 
         auto client = CreateClient(true, config);
+        EXPECT_TRUE(client->Start().IsNone());
 
         server->WaitNodeInfo();
 
@@ -496,7 +499,11 @@ TEST_F(IAMClientTest, InitFailed)
     EXPECT_CALL(*server, OnNodeInfo(_)).Times(0);
 
     auto client = CreateClient(true);
+    EXPECT_TRUE(client->Start().IsNone());
+
     server->WaitNodeInfo(std::chrono::seconds(1));
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, ConnectionFailed)
@@ -504,7 +511,11 @@ TEST_F(IAMClientTest, ConnectionFailed)
     EXPECT_CALL(mNodeInfoProvider, GetNodeInfo).WillOnce(Return(ErrorEnum::eNone));
 
     auto client = CreateClient(true);
+    EXPECT_TRUE(client->Start().IsNone());
+
     sleep(1);
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, Reconnect)
@@ -524,6 +535,8 @@ TEST_F(IAMClientTest, Reconnect)
     EXPECT_CALL(*server2, OnNodeInfo(expNodeInfo));
 
     server2->WaitNodeInfo();
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, StartProvisioning)
@@ -539,6 +552,8 @@ TEST_F(IAMClientTest, StartProvisioning)
 
     server->StartProvisioningRequest(nodeInfo.mNodeID.CStr(), cPassword.CStr());
     server->WaitResponse();
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, StartProvisioningExecFailed)
@@ -557,6 +572,8 @@ TEST_F(IAMClientTest, StartProvisioningExecFailed)
 
     server->StartProvisioningRequest(nodeInfo.mNodeID.CStr(), cPassword.CStr());
     server->WaitResponse();
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, StartProvisioningWrongNodeStatus)
@@ -572,6 +589,8 @@ TEST_F(IAMClientTest, StartProvisioningWrongNodeStatus)
 
     server->StartProvisioningRequest(nodeInfo.mNodeID.CStr(), cPassword.CStr());
     server->WaitResponse();
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, FinishProvisioning)
@@ -593,6 +612,8 @@ TEST_F(IAMClientTest, FinishProvisioning)
 
     server->FinishProvisioningRequest(nodeInfo.mNodeID.CStr(), cPassword.CStr());
     server->WaitResponse();
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, FinishProvisioningWrongNodeStatus)
@@ -607,6 +628,8 @@ TEST_F(IAMClientTest, FinishProvisioningWrongNodeStatus)
 
     server->FinishProvisioningRequest(nodeInfo.mNodeID.CStr(), cPassword.CStr());
     server->WaitResponse();
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, Deprovision)
@@ -628,6 +651,8 @@ TEST_F(IAMClientTest, Deprovision)
 
     server->DeprovisionRequest(nodeInfo.mNodeID.CStr(), cPassword.CStr());
     server->WaitResponse();
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, DeprovisionWrongNodeStatus)
@@ -643,6 +668,8 @@ TEST_F(IAMClientTest, DeprovisionWrongNodeStatus)
 
     server->DeprovisionRequest(nodeInfo.mNodeID.CStr(), cPassword.CStr());
     server->WaitResponse();
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, PauseNode)
@@ -666,6 +693,8 @@ TEST_F(IAMClientTest, PauseNode)
     server->PauseNodeRequest(nodeInfo.mNodeID.CStr());
     server->WaitResponse();
     server->WaitNodeInfo();
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, PauseWrongNodeStatus)
@@ -681,6 +710,8 @@ TEST_F(IAMClientTest, PauseWrongNodeStatus)
 
     server->PauseNodeRequest(nodeInfo.mNodeID.CStr());
     server->WaitResponse();
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, ResumeNode)
@@ -704,6 +735,8 @@ TEST_F(IAMClientTest, ResumeNode)
     server->ResumeNodeRequest(nodeInfo.mNodeID.CStr());
     server->WaitResponse();
     server->WaitNodeInfo();
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, ResumeWrongNodeStatus)
@@ -719,6 +752,8 @@ TEST_F(IAMClientTest, ResumeWrongNodeStatus)
 
     server->ResumeNodeRequest(nodeInfo.mNodeID.CStr());
     server->WaitResponse();
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, CreateKey)
@@ -735,6 +770,8 @@ TEST_F(IAMClientTest, CreateKey)
 
     server->CreateKeyRequest(nodeInfo.mNodeID.CStr(), "", cCertType.CStr(), cPassword.CStr());
     server->WaitResponse();
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, ApplyCert)
@@ -754,6 +791,8 @@ TEST_F(IAMClientTest, ApplyCert)
 
     server->ApplyCertRequest(nodeInfo.mNodeID.CStr(), cCertType.CStr(), {});
     server->WaitResponse();
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
 
 TEST_F(IAMClientTest, GetCertTypes)
@@ -763,13 +802,16 @@ TEST_F(IAMClientTest, GetCertTypes)
     NodeInfo nodeInfo     = DefaultNodeInfo(NodeStatusEnum::eUnprovisioned);
 
     // GetCertTypes
-    aos::iam::provisionmanager::CertTypes types;
+    provisionmanager::CertTypes types;
     FillArray({"iam", "online", "offline"}, types);
 
-    EXPECT_CALL(mProvisionManager, GetCertTypes())
-        .WillOnce(Return(aos::RetWithError<aos::iam::provisionmanager::CertTypes>(types)));
+    EXPECT_CALL(mProvisionManager, GetCertTypes()).WillOnce(Return(RetWithError<provisionmanager::CertTypes>(types)));
     EXPECT_CALL(*server, OnCertTypesResponse(ElementsAre("iam", "online", "offline")));
 
     server->GetCertTypesRequest(nodeInfo.mNodeID.CStr());
     server->WaitResponse();
+
+    EXPECT_TRUE(client->Stop().IsNone());
 }
+
+} // namespace aos::iam::iamclient
