@@ -4,6 +4,8 @@
 
 # Identity and Access Manager(IAM)
 
+**IMPORTANT**: this repo is archived and moved to https://github.com/aosedge/aos_core_cpp.
+
 ## Prepare build environment
 
 ```sh
